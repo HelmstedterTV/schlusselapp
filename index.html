@@ -1075,6 +1075,11 @@ function signInWithGoogle() {
 }
 
 function initAuth() {
+  // Redirect-Ergebnis auswerten
+  firebase.auth().getRedirectResult().catch(err => {
+    document.getElementById('loginError').textContent = '❌ Fehler: ' + err.message;
+  });
+
   firebase.auth().onAuthStateChanged(user => {
     if (user) {
       if (ALLOWED_EMAILS.includes(user.email)) {
