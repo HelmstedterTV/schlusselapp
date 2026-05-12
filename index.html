@@ -557,7 +557,6 @@ async function seedIfEmpty() {
 
 function initFirestore() {
   try {
-    firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
   } catch(e) {
     showSpinner('❌ Firebase-Konfiguration fehlt! Bitte Config eintragen.');
@@ -1096,6 +1095,9 @@ function initAuth() {
 }
 
 // ==================== START ====================
+// Firebase sofort initialisieren
+firebase.initializeApp(firebaseConfig);
+
 function startApp() {
   document.getElementById('splash').classList.add('hidden');
   document.getElementById('app').classList.add('visible');
