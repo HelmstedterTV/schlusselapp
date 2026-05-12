@@ -401,7 +401,7 @@
 // ▼▼▼ Hier die Werte aus der Firebase-Konsole eintragen ▼▼▼
 // =====================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyCpbtuyTPGG0ovbkgjaa1T1aIxoZdD1Arg",
+  apiKey: "AIzaSyDfP2xCpV5d2qCefkMFgxmYJK8pCALY2N0",
   authDomain: "schluesselapp-15d55.firebaseapp.com",
   projectId: "schluesselapp-15d55",
   storageBucket: "schluesselapp-15d55.firebasestorage.app",
@@ -1083,6 +1083,11 @@ function initAuth() {
     if (user) {
       if (ALLOWED_EMAILS.includes(user.email)) {
         document.getElementById('loginScreen').classList.add('hidden');
+        // Splash überspringen falls noch sichtbar
+        const splash = document.getElementById('splash');
+        if (splash && !splash.classList.contains('hidden')) {
+          startApp();
+        }
       } else {
         firebase.auth().signOut();
         document.getElementById('loginError').textContent = '❌ Zugang nicht erlaubt für: ' + user.email;
