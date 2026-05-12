@@ -1083,11 +1083,8 @@ function initAuth() {
     if (user) {
       if (ALLOWED_EMAILS.includes(user.email)) {
         document.getElementById('loginScreen').classList.add('hidden');
-        // Splash überspringen falls noch sichtbar
-        const splash = document.getElementById('splash');
-        if (splash && !splash.classList.contains('hidden')) {
-          startApp();
-        }
+        // Automatisch starten nach Login
+        startApp();
       } else {
         firebase.auth().signOut();
         document.getElementById('loginError').textContent = '❌ Zugang nicht erlaubt für: ' + user.email;
@@ -1106,7 +1103,10 @@ firebase.initializeApp(firebaseConfig);
 // Auth sofort starten (vor dem Splash)
 initAuth();
 
+let appStarted = false;
 function startApp() {
+  if (appStarted) return;
+  appStarted = true;
   document.getElementById('splash').classList.add('hidden');
   document.getElementById('app').classList.add('visible');
   setTimeout(() => document.getElementById('splash').style.display='none', 600);
