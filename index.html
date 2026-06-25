@@ -1045,9 +1045,6 @@ function showStats() {
 // Firebase sofort initialisieren
 firebase.initializeApp(firebaseConfig);
 
-// App direkt starten
-startApp();
-
 let appStarted = false;
 function startApp() {
   if (appStarted) return;
@@ -1058,6 +1055,9 @@ function startApp() {
   showSpinner('Verbinde mit Datenbank …');
   initFirestore();
 }
+
+// App direkt starten (kein Login nötig)
+startApp();
 </script>
 </body>
 </html>
