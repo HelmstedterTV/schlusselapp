@@ -221,26 +221,6 @@
 </style>
 </head>
 <body>
-
-
-<!-- Passwort-Schutz -->
-<div id="pwOverlay" style="position:fixed;inset:0;background:linear-gradient(160deg,#003d82 0%,#0062cc 60%,#3d8ef0 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:900;padding:32px">
-  <div style="width:90px;height:90px;background:rgba(255,255,255,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:24px;overflow:hidden">
-    <img id="pwLogo" style="width:74px;height:74px;object-fit:contain" alt="HTV">
-  </div>
-  <div style="color:#fff;font-size:22px;font-weight:700;margin-bottom:4px">HTV Helmstedt</div>
-  <div style="color:rgba(255,255,255,0.8);font-size:14px;margin-bottom:36px">Schlüsselverwaltung</div>
-  <input type="password" id="pwInput" placeholder="Passwort" maxlength="40"
-    style="width:100%;max-width:300px;padding:14px 18px;border:none;border-radius:14px;font-size:17px;text-align:center;outline:none;margin-bottom:12px;box-sizing:border-box;box-shadow:0 2px 12px rgba(0,0,0,0.15)"
-    onkeydown="if(event.key==='Enter')checkPw()">
-  <button onclick="checkPw()"
-    style="width:100%;max-width:300px;padding:14px;background:#fff;color:#0062cc;border:none;border-radius:14px;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.2);margin-bottom:14px">
-    Anmelden
-  </button>
-  <div id="pwError" style="color:#ffcdd2;font-size:14px;font-weight:600;min-height:20px;text-align:center"></div>
-  <a href="https://helmstedtertv.github.io/Htv-vorstands-app/" style="color:rgba(255,255,255,0.6);font-size:13px;margin-top:24px;text-decoration:none">← Zur Vorstands-App</a>
-</div>
-
 <div id="splash"></div>
 
 <!-- APP -->
@@ -1103,34 +1083,8 @@ function esc(s) {
 }
 
 let toastTimer;
-// ── PASSWORT-SCHUTZ ─────────────────────────────────────
-const APP_PW = 'htv2024'; // Passwort hier ändern
-
-function checkPw() {
-  const val = document.getElementById('pwInput').value;
-  if (val === APP_PW) {
-    document.getElementById('pwOverlay').style.display = 'none';
-    sessionStorage.setItem('htv_auth', '1');
-  } else {
-    const err = document.getElementById('pwError');
-    err.textContent = 'Falsches Passwort';
-    document.getElementById('pwInput').value = '';
-    document.getElementById('pwInput').style.animation = 'shake 0.3s ease';
-    setTimeout(() => { document.getElementById('pwInput').style.animation = ''; }, 300);
-  }
-}
-
 // Auto-Start beim Laden
-window.addEventListener('load', () => {
-  // Logo ins PW-Overlay einsetzen (aus Header-img)
-  const hdrImg = document.querySelector('.header-logo img');
-  if (hdrImg) document.getElementById('pwLogo').src = hdrImg.src;
-  // Schon eingeloggt?
-  if (sessionStorage.getItem('htv_auth') === '1') {
-    document.getElementById('pwOverlay').style.display = 'none';
-  }
-  startApp();
-});
+window.addEventListener('load', () => startApp());
 
 function showToast(msg) {
   const el = document.getElementById('toast');
