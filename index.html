@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HTV Schlüssel">
+<title>HTV Schlüsselverwaltung</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+  :root {
+    --blue: #0062cc;
+    --blue-light: #3d8ef0;
+    --blue-dark: #003d82;
+    --navy: #003d82;
+    --navy-light: #1565c0;
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --text: #1a1a2e;
+    --text-light: #6b7280;
+    --border: #e2e8f0;
+    --danger: #dc2626;
+    --shadow: 0 1px 4px rgba(0,0,0,0.08), 0 2px 12px rgba(0,0,0,0.06);
+    --radius: 12px;
+    --nav-h: 64px;
+    --accent-bg: rgba(0,98,204,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+
+  /* ── SPLASH ── */
+  #splash { position: fixed; inset: 0; background: linear-gradient(160deg, var(--blue-dark) 0%, var(--blue) 60%, var(--blue-light) 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; transition: opacity 0.5s ease; }
+  #splash.hidden { opacity: 0; pointer-events: none; }
+  .splash-logo { width: 110px; height: 110px; background: rgba(255,255,255,0.15); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 24px; box-shadow: 0 4px 24px rgba(0,0,0,0.2); overflow: hidden; }
+  .splash-logo img { width: 90px; height: 90px; object-fit: contain; }
+  .splash-title { color: #fff; font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+  .splash-sub { color: rgba(255,255,255,0.8); font-size: 14px; margin-bottom: 48px; }
+  #btnStart { background: #fff; color: var(--blue); border: none; padding: 16px 52px; border-radius: 50px; font-size: 17px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 24px rgba(0,0,0,0.2); transition: transform 0.15s; }
+  #btnStart:active { transform: scale(0.96); }
+
+  /* ── APP ── */
+  #app { display: none; flex-direction: column; height: 100vh; }
+  #app.visible { display: flex; }
+
+  /* ── HEADER ── */
+  header { color: #fff; padding: 14px 16px 12px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 12px rgba(0,0,0,0.18); transition: background 0.3s; }
+  header.tab-keys  { background: linear-gradient(135deg, var(--blue-dark), var(--blue)); }
+  header.tab-locks { background: linear-gradient(135deg, #002a6e, var(--navy-light)); }
+  .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .header-logo { width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.2); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .header-logo img { width: 26px; height: 26px; object-fit: contain; }
+  .header-title { font-size: 17px; font-weight: 700; }
+  .header-sub { font-size: 11px; opacity: 0.75; }
+  .header-right { display: flex; align-items: center; gap: 6px; }
+  #syncStatus { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 10px; background: rgba(255,255,255,0.2); color: #fff; white-space: nowrap; }
+  #syncStatus.online  { background: rgba(34,197,94,0.35); }
+  #syncStatus.offline { background: rgba(220,38,38,0.45); }
+  .btn-icon { background: rgba(255,255,255,0.18); border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 17px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .btn-icon:active { background: rgba(255,255,255,0.32); }
+  .search-bar { background: rgba(255,255,255,0.95); border-radius: 10px; display: flex; align-items: center; padding: 0 12px; gap: 8px; }
+  .search-bar input { border: none; background: transparent; width: 100%; padding: 10px 0; font-size: 15px; color: var(--text); outline: none; }
+  .search-clear { background: none; border: none; color: #9ca3af; font-size: 18px; cursor: pointer; padding: 4px; }
+
+  /* ── BOTTOM NAV ── */
+  .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: var(--nav-h); background: var(--card); border-top: 1px solid var(--border); display: flex; z-index: 100; box-shadow: 0 -2px 12px rgba(0,0,0,0.06); }
+  .nav-btn { flex: 1; background: none; border: none; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #9ca3af; transition: color 0.2s; }
+  .nav-btn.active { color: var(--blue); }
+  .nav-icon { font-size: 22px; line-height: 1; }
+  .nav-label { font-size: 11px; font-weight: 600; }
+
+  /* ── VIEWS ── */
+  .view { display: none; flex-direction: column; flex: 1; overflow: hidden; padding-bottom: var(--nav-h); }
+  .view.active { display: flex; }
+  .filter-wrap { background: var(--card); border-bottom: 1px solid var(--border); overflow-x: auto; flex-shrink: 0; }
+  .filter-tabs { display: flex; padding: 0 8px; white-space: nowrap; }
+  .filter-tab { background: none; border: none; padding: 10px 14px; font-size: 13px; color: var(--text-light); cursor: pointer; border-bottom: 3px solid transparent; font-weight: 500; flex-shrink: 0; }
+  .filter-tab.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 700; }
+  .stats-bar { display: flex; gap: 8px; padding: 8px 12px; background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; }
+  .stat-chip { background: var(--bg); border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--text-light); font-weight: 500; white-space: nowrap; border: 1px solid var(--border); }
+  .stat-chip span { font-weight: 700; color: var(--blue); }
+  .list-container { flex: 1; overflow-y: auto; padding: 10px; }
+
+  /* ── KEY CARDS ── */
+  .key-card { background: var(--card); border-radius: var(--radius); margin-bottom: 8px; box-shadow: var(--shadow); overflow: hidden; cursor: pointer; border: 1px solid var(--border); border-left: 4px solid var(--blue); transition: box-shadow 0.15s; }
+  .key-card:active { opacity: 0.85; }
+  .key-card.returned { border-left-color: #d1d5db; opacity: 0.6; }
+  .key-card.deposit  { border-left-color: #f59e0b; }
+  .card-inner { padding: 12px 14px; display: flex; align-items: center; gap: 12px; }
+  .card-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--blue); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+  .key-card.returned .card-avatar { background: #9ca3af; }
+  .key-card.deposit  .card-avatar { background: #f59e0b; color: #1a1a2e; }
+  .card-content { flex: 1; min-width: 0; }
+  .card-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-type { font-size: 13px; color: var(--text-light); margin-top: 2px; }
+  .card-meta { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 8px; background: var(--bg); color: var(--text-light); font-weight: 500; border: 1px solid var(--border); }
+  .badge.num  { background: rgba(0,98,204,0.08); color: var(--blue); border-color: rgba(0,98,204,0.2); }
+  .badge.date { background: rgba(0,98,204,0.06); color: var(--blue-dark); border-color: rgba(0,98,204,0.15); }
+  .badge.pfand { background: rgba(245,158,11,0.1); color: #92400e; border-color: rgba(245,158,11,0.25); }
+  .badge.warn { background: rgba(220,38,38,0.08); color: var(--danger); border-color: rgba(220,38,38,0.2); }
+  .card-arrow { color: #d1d5db; font-size: 16px; flex-shrink: 0; }
+
+  /* ── LOCK CARDS ── */
+  .lock-card { background: var(--card); border-radius: var(--radius); margin-bottom: 8px; box-shadow: var(--shadow); cursor: pointer; border: 1px solid var(--border); border-left: 4px solid var(--navy); transition: box-shadow 0.15s; }
+  .lock-card:active { opacity: 0.85; }
+  .lock-card.warn-card { border-left-color: #ea580c; }
+  .lock-card.ok-card   { border-left-color: #16a34a; }
+  .lock-inner { padding: 12px 14px; display: flex; align-items: center; gap: 12px; }
+  .lock-num { width: 40px; height: 40px; border-radius: 10px; background: var(--navy); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+  .lock-card.warn-card .lock-num { background: #ea580c; }
+  .lock-card.ok-card   .lock-num { background: #16a34a; }
+  .lock-content { flex: 1; min-width: 0; }
+  .lock-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lock-meta { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; }
+
+  /* ── EMPTY ── */
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-light); }
+  .empty-state .icon { font-size: 48px; margin-bottom: 14px; }
+  .empty-state p { font-size: 15px; }
+
+  /* ── FAB ── */
+  .fab { position: fixed; bottom: calc(var(--nav-h) + 16px); right: 20px; background: var(--blue); color: #fff; border: none; width: 52px; height: 52px; border-radius: 50%; font-size: 24px; box-shadow: 0 4px 16px rgba(0,98,204,0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 50; transition: transform 0.15s, box-shadow 0.15s; }
+  .fab:active { transform: scale(0.92); }
+
+  /* ── SHEETS ── */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 200; display: none; align-items: flex-end; }
+  .overlay.open { display: flex; }
+  .sheet { background: var(--card); width: 100%; border-radius: 20px 20px 0 0; max-height: 92vh; overflow-y: auto; animation: slideUp 0.28s ease; }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .sheet-handle { width: 36px; height: 4px; background: #e2e8f0; border-radius: 2px; margin: 12px auto 4px; }
+  .sheet-header { padding: 8px 16px 14px; display: flex; align-items: center; justify-content: space-between; }
+  .sheet-title { font-size: 17px; font-weight: 700; color: var(--text); }
+  .btn-close { background: #f1f5f9; border: none; width: 30px; height: 30px; border-radius: 50%; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-light); }
+
+  /* ── DETAIL ── */
+  .detail-hero { padding: 16px; margin: 0 16px 16px; border-radius: var(--radius); color: #fff; display: flex; align-items: center; gap: 14px; }
+  .detail-hero.blue   { background: linear-gradient(135deg, var(--blue-dark), var(--blue-light)); }
+  .detail-hero.grey   { background: linear-gradient(135deg, #4b5563, #9ca3af); }
+  .detail-hero.navy   { background: linear-gradient(135deg, #002a6e, var(--navy-light)); }
+  .detail-hero.orange { background: linear-gradient(135deg, #c2410c, #f97316); }
+  .detail-avatar { width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.22); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; flex-shrink: 0; }
+  .detail-name { font-size: 18px; font-weight: 700; }
+  .detail-type { font-size: 13px; opacity: 0.82; margin-top: 3px; }
+  .detail-section { padding: 0 16px; margin-bottom: 4px; }
+  .detail-section-title { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.6px; padding: 12px 0 6px; }
+  .detail-rows { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); overflow: hidden; }
+  .detail-row { display: flex; align-items: flex-start; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-icon { width: 30px; font-size: 15px; flex-shrink: 0; padding-top: 1px; }
+  .detail-label { font-size: 11px; color: var(--text-light); margin-bottom: 1px; }
+  .detail-value { font-size: 14px; font-weight: 500; }
+  .detail-value a { color: var(--blue); text-decoration: none; }
+  .holder-list { padding: 0 16px 8px; }
+  .holder-list-title { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; padding: 12px 0 6px; }
+  .holder-items { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); overflow: hidden; }
+  .holder-item { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .holder-item:last-child { border-bottom: none; }
+  .holder-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); flex-shrink: 0; }
+  .holder-dot.ret { background: #9ca3af; }
+  .holder-name { font-size: 14px; font-weight: 500; flex: 1; }
+  .holder-nr { font-size: 12px; color: var(--text-light); }
+  .action-row { display: flex; gap: 10px; padding: 14px 16px 24px; }
+  .btn-action { flex: 1; padding: 13px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+  .btn-action:active { opacity: 0.8; }
+  .btn-edit   { background: var(--blue); color: #fff; }
+  .btn-edit-navy { background: var(--navy); color: #fff; }
+  .btn-delete { background: rgba(220,38,38,0.08); color: var(--danger); border: 1px solid rgba(220,38,38,0.2); }
+
+  /* ── FORMS ── */
+  .form-body { padding: 0 16px 28px; }
+  .form-group { margin-bottom: 14px; }
+  .form-label { font-size: 12px; color: var(--text-light); font-weight: 600; margin-bottom: 5px; display: block; text-transform: uppercase; letter-spacing: 0.4px; }
+  .form-input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 15px; background: var(--card); outline: none; transition: border-color 0.2s; color: var(--text); font-family: inherit; }
+  .form-input:focus { border-color: var(--blue); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .btn-save { width: 100%; padding: 14px; color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 8px; font-family: inherit; transition: opacity 0.15s; }
+  .btn-save.blue { background: var(--blue); }
+  .btn-save.navy { background: var(--navy); }
+  .btn-save:disabled { opacity: 0.55; }
+
+  /* ── SETTINGS ── */
+  .settings-section { padding: 0 16px 12px; }
+  .settings-section-title { font-size: 12px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; padding: 14px 0 8px; border-top: 1px solid var(--border); margin-top: 8px; }
+  .settings-section-title:first-child { border-top: none; margin-top: 0; }
+  .field-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .field-row-badge { font-size: 11px; color: var(--text-light); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px; flex-shrink: 0; min-width: 60px; text-align: center; }
+  .field-row input { flex: 1; padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; color: var(--text); background: var(--card); outline: none; font-family: inherit; }
+  .field-row input:focus { border-color: var(--blue); }
+  .btn-remove-field { background: none; border: none; color: #9ca3af; font-size: 18px; cursor: pointer; padding: 4px; flex-shrink: 0; }
+  .btn-remove-field:hover { color: var(--danger); }
+  .btn-add-field { background: var(--accent-bg); border: 1px dashed rgba(0,98,204,0.35); border-radius: 8px; padding: 9px 14px; font-size: 13px; color: var(--blue); cursor: pointer; font-family: inherit; font-weight: 600; width: 100%; margin-top: 4px; }
+  .field-type-select { padding: 8px 10px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text-light); background: var(--card); outline: none; flex-shrink: 0; font-family: inherit; }
+  .btn-save-settings { width: 100%; padding: 14px; background: var(--blue); color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 12px; font-family: inherit; }
+
+  /* ── STATS ── */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .stats-tile { border-radius: 12px; padding: 14px; text-align: center; border: 1px solid var(--border); }
+  .stats-tile .big { font-size: 26px; font-weight: 700; color: var(--blue); }
+  .stats-tile .lbl { font-size: 11px; color: var(--text-light); margin-top: 3px; }
+
+  /* ── TOAST ── */
+  .toast { position: fixed; bottom: calc(var(--nav-h) + 12px); left: 50%; transform: translateX(-50%); background: #1e293b; color: #fff; padding: 10px 20px; border-radius: 24px; font-size: 14px; font-weight: 500; z-index: 400; opacity: 0; transition: opacity 0.25s; pointer-events: none; white-space: nowrap; box-shadow: 0 4px 16px rgba(0,0,0,0.2); }
+  .toast.show { opacity: 1; }
+
+  /* ── CONFIRM ── */
+  .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 500; display: none; align-items: center; justify-content: center; padding: 24px; }
+  .confirm-overlay.open { display: flex; }
+  .confirm-box { background: var(--card); border-radius: 16px; padding: 24px; width: 100%; max-width: 320px; }
+  .confirm-title { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+  .confirm-text  { font-size: 14px; color: var(--text-light); margin-bottom: 20px; line-height: 1.5; }
+  .confirm-btns  { display: flex; gap: 10px; }
+  .confirm-btns button { flex: 1; padding: 12px; border-radius: 10px; border: none; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-cancel-confirm { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+  .btn-ok-confirm { background: var(--danger); color: #fff; }
+
+  /* ── SPINNER ── */
+  #fsSpinner { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+  #fsSpinner.hidden { display: none; }
+  .spinner-ring { width: 44px; height: 44px; border: 4px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #fsSpinner p { color: #fff; font-size: 15px; font-weight: 600; }
+
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- SPLASH -->
+<div id="splash">
+  <div class="splash-logo">
+    <img src="https://helmstedtertv.github.io/htv-anlagen/assets/Logo2025.png" alt="HTV" onerror="this.parentElement.innerHTML='🎾'">
+  </div>
+  <div class="splash-title">HTV Helmstedt</div>
+  <div class="splash-sub">Schlüsselverwaltung</div>
+  <button id="btnStart" onclick="startApp()">▶ &nbsp;Starten</button>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header id="mainHeader" class="tab-keys">
+    <div class="header-top">
+      <div class="header-left">
+        <div class="header-logo">
+          <img src="https://helmstedtertv.github.io/htv-anlagen/assets/Logo2025.png" alt="HTV" onerror="this.style.display='none'">
+        </div>
+        <div>
+          <div class="header-title" id="headerTitle">🔑 Schlüsselinhaber</div>
+          <div class="header-sub" id="headerSub"></div>
+        </div>
+      </div>
+      <div class="header-right">
+        <span id="syncStatus">● …</span>
+        <button class="btn-icon" onclick="openSettings()" title="Felder konfigurieren">⚙️</button>
+        <button class="btn-icon" onclick="showStats()" title="Statistik">📊</button>
+        <a href="https://helmstedtertv.github.io/Htv-vorstands-app/" class="btn-icon" title="Vorstands-App" style="text-decoration:none;font-size:15px;">⬅</a>
+      </div>
+    </div>
+    <div class="search-bar">
+      <span style="font-size:15px">🔍</span>
+      <input type="search" id="searchInput" placeholder="Suchen …" oninput="onSearch()">
+      <button class="search-clear" onclick="clearSearch()" id="searchClearBtn" style="display:none">✕</button>
+    </div>
+  </header>
+
+  <!-- VIEW: SCHLÜSSEL -->
+  <div class="view active" id="viewKeys">
+    <div class="filter-wrap"><div class="filter-tabs" id="filterTabsKeys"></div></div>
+    <div class="stats-bar" id="statsBarKeys"></div>
+    <div class="list-container" id="listKeys"></div>
+  </div>
+
+  <!-- VIEW: SCHLÖSSER -->
+  <div class="view" id="viewLocks">
+    <div class="filter-wrap"><div class="filter-tabs" id="filterTabsLocks"></div></div>
+    <div class="stats-bar" id="statsBarLocks"></div>
+    <div class="list-container" id="listLocks"></div>
+  </div>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" id="navKeys" onclick="switchTab('keys')">
+      <span class="nav-icon">🔑</span><span class="nav-label">Inhaber</span>
+    </button>
+    <button class="nav-btn" id="navLocks" onclick="switchTab('locks')">
+      <span class="nav-icon">🚪</span><span class="nav-label">Schlösser</span>
+    </button>
+  </nav>
+  <button class="fab" id="fabBtn" onclick="fabAction()">＋</button>
+</div>
+
+<!-- Detail: Schlüssel -->
+<div class="overlay" id="detailOverlay" onclick="closeOverlay('detailOverlay')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">Details</div>
+      <button class="btn-close" onclick="closeOverlay('detailOverlay')">✕</button>
+    </div>
+    <div id="detailContent"></div>
+  </div>
+</div>
+
+<!-- Detail: Schloss -->
+<div class="overlay" id="lockDetailOverlay" onclick="closeOverlay('lockDetailOverlay')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">Schloss Details</div>
+      <button class="btn-close" onclick="closeOverlay('lockDetailOverlay')">✕</button>
+    </div>
+    <div id="lockDetailContent"></div>
+  </div>
+</div>
+
+<!-- Form: Schlüssel -->
+<div class="overlay" id="formOverlay" onclick="closeOverlay('formOverlay')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" id="formTitle">Neuer Eintrag</div>
+      <button class="btn-close" onclick="closeOverlay('formOverlay')">✕</button>
+    </div>
+    <div class="form-body" id="keyFormBody">
+      <input type="hidden" id="fId">
+      <!-- dynamisch befüllt -->
+      <button class="btn-save blue" id="keySaveBtn" onclick="saveEntry()">💾 &nbsp;Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Form: Schloss -->
+<div class="overlay" id="lockFormOverlay" onclick="closeOverlay('lockFormOverlay')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" id="lockFormTitle">Neues Schloss</div>
+      <button class="btn-close" onclick="closeOverlay('lockFormOverlay')">✕</button>
+    </div>
+    <div class="form-body" id="lockFormBody">
+      <input type="hidden" id="lfId">
+      <!-- dynamisch befüllt -->
+      <button class="btn-save navy" id="lockSaveBtn" onclick="saveLock()">💾 &nbsp;Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="overlay" id="settingsOverlay" onclick="closeOverlay('settingsOverlay')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">⚙️ Felder konfigurieren</div>
+      <button class="btn-close" onclick="closeOverlay('settingsOverlay')">✕</button>
+    </div>
+    <div class="settings-section" id="settingsContent"></div>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="overlay" id="statsOverlay" onclick="closeOverlay('statsOverlay')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">📊 Gesamtübersicht</div>
+      <button class="btn-close" onclick="closeOverlay('statsOverlay')">✕</button>
+    </div>
+    <div id="statsContent" style="padding:0 16px 28px;"></div>
+  </div>
+</div>
+
+<!-- Confirm Löschen -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <div class="confirm-title">Löschen?</div>
+    <div class="confirm-text" id="confirmText"></div>
+    <div class="confirm-btns">
+      <button class="btn-cancel-confirm" onclick="closeConfirm()">Abbrechen</button>
+      <button class="btn-ok-confirm" onclick="confirmDelete()">Löschen</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div id="fsSpinner" class="hidden">
+  <div class="spinner-ring"></div>
+  <p id="fsSpinnerText">Verbinde …</p>
+</div>
+
+<script>
+// ── FIREBASE CONFIG ──────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyCpbtuyTPGG0ovbkgjaa1T1aIxoZdD1Arg",
+  authDomain: "schluesselapp-15d55.firebaseapp.com",
+  projectId: "schluesselapp-15d55",
+  storageBucket: "schluesselapp-15d55.firebasestorage.app",
+  messagingSenderId: "170328595810",
+  appId: "1:170328595810:web:fd32f77f2505b63629603b"
+};
+
+// ── SEED DATA ────────────────────────────────────────────
+const CSV_KEYS = [
+  {nachname:"Schaube",vorname:"Anna-Frederike",art:"43407",nummer:"2.137",datum:"",pfand:"",telefon:"5351 40567",bemerkung:""},
+  {nachname:"Pächter",vorname:"No Name",art:"Abstellraum",nummer:"0",datum:"01.10.2009",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Pächter",vorname:"No Name",art:"Briefkasten",nummer:"0",datum:"01.10.2009",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Pächter",vorname:"No Name",art:"Hallenbeleuchtung",nummer:"0",datum:"01.10.2009",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Pächter",vorname:"No Name",art:"HS",nummer:"0",datum:"01.10.2009",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Schinnerling",vorname:"Peter",art:"HS",nummer:"0",datum:"16.04.2008",pfand:"0",telefon:"6771",bemerkung:""},
+  {nachname:"Hauf",vorname:"Christian",art:"HS",nummer:"314.034",datum:"17.04.2021",pfand:"0",telefon:"2095",bemerkung:""},
+  {nachname:"Geschäftszimmer",vorname:"Schlüsselschrank",art:"HS",nummer:"",datum:"",pfand:"",telefon:"",bemerkung:""},
+  {nachname:"Stolle",vorname:"Caro",art:"HS",nummer:"114.034",datum:"01.05.2008",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Schinnerling",vorname:"Peter",art:"HS",nummer:"311.434",datum:"01.01.2000",pfand:"0",telefon:"6771",bemerkung:""},
+  {nachname:"Drick",vorname:"Alexandra",art:"HS abgegeben 17.01.2018",nummer:"114.034",datum:"01.05.2008",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Glöckler",vorname:"Hartmut",art:"HS abgegeben 08.01.2020",nummer:"114.034",datum:"01.01.2000",pfand:"0",telefon:"33121",bemerkung:""},
+  {nachname:"Hempel",vorname:"Lutz",art:"HS",nummer:"192",datum:"",pfand:"",telefon:"41739",bemerkung:"von Alex Drick übernommen"},
+  {nachname:"Gerloff",vorname:"Lina",art:"Krüger",nummer:"2.172",datum:"",pfand:"",telefon:"",bemerkung:"Olesya"},
+  {nachname:"Pächter",vorname:"No Name",art:"Müllcontainer",nummer:"0",datum:"01.10.2009",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Pächter",vorname:"No Name",art:"Nebenschlüssel",nummer:"0",datum:"01.10.2009",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Tauber",vorname:"Heinz",art:"neu Karte",nummer:"2.033",datum:"",pfand:"",telefon:"03076 78332",bemerkung:""},
+  {nachname:"Gatke",vorname:"Guido",art:"Schließung 2",nummer:"",datum:"",pfand:"",telefon:"",bemerkung:""},
+  {nachname:"Speer",vorname:"Hannes",art:"Schließung 2",nummer:"46",datum:"18.04.2005",pfand:"0",telefon:"37437",bemerkung:""},
+  {nachname:"Brumund",vorname:"Wolfgang",art:"Schließung 3",nummer:"",datum:"",pfand:"",telefon:"",bemerkung:""},
+  {nachname:"Lüders",vorname:"Karen",art:"Schließung 4",nummer:"45",datum:"28.08.2005",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Geschäftszimmer",vorname:"Schlüsselschrank",art:"Schließung 4",nummer:"",datum:"",pfand:"",telefon:"",bemerkung:""},
+  {nachname:"Geschäftszimmer",vorname:"Schlüsselschrank",art:"Schließung 4",nummer:"",datum:"",pfand:"",telefon:"",bemerkung:""},
+  {nachname:"Dierks",vorname:"Uwe",art:"Schließung 4",nummer:"114.034",datum:"01.05.2008",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Fabiunke",vorname:"Erika",art:"Schließung 4",nummer:"114.034",datum:"01.05.2008",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Munter-Hoff",vorname:"Giesela",art:"Schrank Umkleide Damen",nummer:"135",datum:"02.07.2013",pfand:"20",telefon:"4908",bemerkung:""},
+  {nachname:"Zierlein",vorname:"Ulla",art:"Schrank Umkleide Damen",nummer:"144",datum:"14.02.2002",pfand:"20",telefon:"58770",bemerkung:"Rückgabe 1.8.2024"},
+  {nachname:"Kwiatkowski",vorname:"Sabine",art:"Schrank Umkleide Damen",nummer:"202",datum:"01.10.2010",pfand:"20",telefon:"595999",bemerkung:""},
+  {nachname:"Kniep",vorname:"Gitti",art:"Schrank Umkleide Damen",nummer:"260",datum:"16.01.2008",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Geika",vorname:"K.",art:"Schrank Umkleide Damen",nummer:"782",datum:"01.05.2013",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Wiese",vorname:"Ute",art:"Schrank Umkleide Damen",nummer:"965",datum:"01.10.2010",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Pilasch",vorname:"Hans",art:"Schrank Umkleide Damen",nummer:"1.015",datum:"01.11.2006",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Fabiunke",vorname:"Erika",art:"Schrank Umkleide Damen",nummer:"66.759",datum:"20.12.2012",pfand:"20",telefon:"",bemerkung:"Rückgabe 01.01.2025"},
+  {nachname:"Dierks",vorname:"Uwe",art:"Schrank Umkleide Herren",nummer:"12",datum:"31.12.1999",pfand:"20",telefon:"4956",bemerkung:""},
+  {nachname:"Fabiunke",vorname:"Manfred",art:"Schrank Umkleide Herren",nummer:"13",datum:"31.12.1999",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Pilasch",vorname:"Hans",art:"Schrank Umkleide Herren",nummer:"14",datum:"31.12.1999",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Maeder",vorname:"Klaus",art:"Schrank Umkleide Herren",nummer:"16",datum:"31.12.1999",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Blumenthal",vorname:"Uli",art:"Schrank Umkleide Herren",nummer:"17",datum:"31.12.1999",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Glöckler",vorname:"Hartmut",art:"Schrank Umkleide Herren",nummer:"26",datum:"31.12.1999",pfand:"20",telefon:"33121",bemerkung:""},
+  {nachname:"Baumgart",vorname:"Uwe",art:"Schrank Umkleide Herren",nummer:"70",datum:"07.03.2002",pfand:"20",telefon:"599971",bemerkung:""},
+  {nachname:"Prössel",vorname:"Jürgen",art:"Schrank Umkleide Herren",nummer:"88",datum:"11.05.2011",pfand:"",telefon:"",bemerkung:"Abgegeben"},
+  {nachname:"Zierlein",vorname:"W.",art:"Schrank Umkleide Herren",nummer:"130",datum:"23.05.2002",pfand:"20",telefon:"58770",bemerkung:""},
+  {nachname:"Brumund",vorname:"Wolfgang",art:"Schrank Umkleide Herren",nummer:"244",datum:"",pfand:"5",telefon:"595999",bemerkung:""},
+  {nachname:"Kunow",vorname:"J.",art:"Schrank Umkleide Herren",nummer:"345",datum:"18.06.2002",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Klibor",vorname:"A.",art:"Schrank Umkleide Herren",nummer:"424",datum:"25.04.2002",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Henrichs",vorname:"Klaus",art:"Schrank Umkleide Herren",nummer:"427",datum:"31.07.2006",pfand:"20",telefon:"5352937921",bemerkung:""},
+  {nachname:"Kniep",vorname:"Achim",art:"Schrank Umkleide Herren",nummer:"625",datum:"01.10.2010",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Pilasch",vorname:"Hans",art:"Schrank Umkleide Herren",nummer:"626",datum:"01.11.2006",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Montagsrunde",vorname:"",art:"Schrank Umkleide Herren",nummer:"",datum:"14.10.2002",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Herzlieb",vorname:"R.",art:"Schrank Umkleide Herren",nummer:"1.048",datum:"16.08.2007",pfand:"20",telefon:"",bemerkung:""},
+  {nachname:"Pächter",vorname:"No Name",art:"Speisekammer",nummer:"0",datum:"01.10.2009",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Conradt",vorname:"Nadine",art:"Tennisshop",nummer:"",datum:"",pfand:"",telefon:"",bemerkung:""},
+  {nachname:"Hoberg",vorname:"Mathias",art:"Tennisshop",nummer:"",datum:"",pfand:"",telefon:"",bemerkung:""},
+  {nachname:"Schinnerling",vorname:"Peter",art:"Geschäftszimmer",nummer:"",datum:"19.09.2022",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Brumund",vorname:"Wolfgang",art:"Geschäftszimmer",nummer:"",datum:"19.09.2022",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Tracums",vorname:"Wilnis",art:"Geschäftszimmer",nummer:"",datum:"10.01.2023",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Nabers",vorname:"Christina",art:"Geschäftszimmer",nummer:"",datum:"19.09.2022",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Hauf",vorname:"Christian",art:"Geschäftszimmer",nummer:"",datum:"20.09.2022",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Fabiunke",vorname:"Manfred",art:"Geschäftszimmer",nummer:"",datum:"26.09.2022",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Dierks",vorname:"Uwe",art:"Geschäftszimmer",nummer:"",datum:"19.09.2022",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Mesel",vorname:"Stephan",art:"Geschäftszimmer",nummer:"",datum:"11.10.2022",pfand:"0",telefon:"",bemerkung:""},
+  {nachname:"Dibowski",vorname:"Frank",art:"Geschäftszimmer",nummer:"",datum:"16.11.2022",pfand:"0",telefon:"",bemerkung:""}
+];
+
+const CSV_LOCKS = [
+  {nr:1,name:"Hauptschloss (HS)",anzahl:10,bemerkung:"Haupteingang"},
+  {nr:2,name:"Schließung 2",anzahl:2,bemerkung:""},
+  {nr:3,name:"Schließung 3",anzahl:1,bemerkung:""},
+  {nr:4,name:"Schließung 4",anzahl:5,bemerkung:""},
+  {nr:5,name:"Schrank Umkleide Damen",anzahl:8,bemerkung:""},
+  {nr:6,name:"Schrank Umkleide Herren",anzahl:12,bemerkung:""},
+  {nr:7,name:"Geschäftszimmer",anzahl:8,bemerkung:""},
+  {nr:8,name:"Tennisshop",anzahl:2,bemerkung:""},
+  {nr:9,name:"Abstellraum",anzahl:1,bemerkung:""},
+  {nr:10,name:"Briefkasten",anzahl:1,bemerkung:""},
+  {nr:11,name:"Speisekammer",anzahl:1,bemerkung:""},
+  {nr:12,name:"Müllcontainer",anzahl:1,bemerkung:""},
+  {nr:13,name:"Nebenschlüssel",anzahl:1,bemerkung:""},
+  {nr:14,name:"Hallenbeleuchtung",anzahl:1,bemerkung:""},
+  {nr:15,name:"Krüger",anzahl:1,bemerkung:""},
+  {nr:16,name:"43407",anzahl:1,bemerkung:""},
+  {nr:17,name:"neu Karte",anzahl:1,bemerkung:""}
+];
+
+// ── DEFAULT FIELD CONFIG ─────────────────────────────────
+const DEFAULT_KEY_FIELDS = [
+  {id:'nachname', label:'Nachname',      type:'text',   fixed:true},
+  {id:'vorname',  label:'Vorname',       type:'text',   fixed:true},
+  {id:'art',      label:'Schlüsselart',  type:'text',   fixed:true},
+  {id:'nummer',   label:'Schlüssel-Nr.', type:'text',   fixed:false},
+  {id:'pfand',    label:'Pfand (€)',     type:'number', fixed:false},
+  {id:'datum',    label:'Datum Ausgabe', type:'date',   fixed:false},
+  {id:'telefon',  label:'Telefon',       type:'tel',    fixed:false},
+  {id:'bemerkung',label:'Bemerkung',     type:'text',   fixed:false},
+];
+const DEFAULT_LOCK_FIELDS = [
+  {id:'nr',      label:'Nr.',              type:'number', fixed:true},
+  {id:'name',    label:'Tür / Schloss',    type:'text',   fixed:true},
+  {id:'anzahl',  label:'Anzahl Schlüssel', type:'number', fixed:false},
+  {id:'bemerkung',label:'Bemerkung',       type:'text',   fixed:false},
+];
+
+// ── STATE ────────────────────────────────────────────────
+let db, allKeys = [], allLocks = [], currentTab = 'keys';
+let filterKey = 'Alle', filterLock = 'Alle', searchText = '';
+let pendingDeleteId = null, pendingDeleteType = null;
+let fieldConfig = {
+  keyFields: JSON.parse(JSON.stringify(DEFAULT_KEY_FIELDS)),
+  lockFields: JSON.parse(JSON.stringify(DEFAULT_LOCK_FIELDS)),
+  keyCustomFields: [],
+  lockCustomFields: []
+};
+
+// ── APP START ────────────────────────────────────────────
+async function startApp() {
+  document.getElementById('splash').classList.add('hidden');
+  document.getElementById('app').classList.add('visible');
+  document.getElementById('fsSpinner').classList.remove('hidden');
+  document.getElementById('fsSpinnerText').textContent = 'Verbinde mit Datenbank …';
+
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+
+  // Online/Offline
+  window.addEventListener('online',  () => setSyncStatus(true));
+  window.addEventListener('offline', () => setSyncStatus(false));
+  setSyncStatus(navigator.onLine);
+
+  // Feld-Config laden
+  await loadFieldConfig();
+
+  // Realtime-Listener
+  db.collection('keys').onSnapshot(snap => {
+    allKeys = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    renderKeys();
+    document.getElementById('fsSpinner').classList.add('hidden');
+  }, () => document.getElementById('fsSpinner').classList.add('hidden'));
+
+  db.collection('locks').onSnapshot(snap => {
+    allLocks = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    renderLocks();
+  });
+
+  // Seed wenn leer
+  setTimeout(async () => {
+    const snap = await db.collection('keys').limit(1).get();
+    if (snap.empty) await seedData();
+  }, 2000);
+}
+
+function setSyncStatus(online) {
+  const el = document.getElementById('syncStatus');
+  el.textContent = online ? '● Online' : '● Offline';
+  el.className = online ? 'online' : 'offline';
+}
+
+async function seedData() {
+  const batch = db.batch();
+  CSV_KEYS.forEach(k => batch.set(db.collection('keys').doc(), k));
+  await batch.commit();
+  const b2 = db.batch();
+  CSV_LOCKS.forEach(l => b2.set(db.collection('locks').doc(), l));
+  await b2.commit();
+}
+
+// ── FIELD CONFIG ─────────────────────────────────────────
+async function loadFieldConfig() {
+  try {
+    const doc = await db.collection('settings').doc('fieldConfig').get();
+    if (doc.exists) {
+      const data = doc.data();
+      if (data.keyFields)       fieldConfig.keyFields       = data.keyFields;
+      if (data.lockFields)      fieldConfig.lockFields      = data.lockFields;
+      if (data.keyCustomFields) fieldConfig.keyCustomFields = data.keyCustomFields;
+      if (data.lockCustomFields)fieldConfig.lockCustomFields = data.lockCustomFields;
+    }
+  } catch(e) { /* offline: defaults verwenden */ }
+}
+
+async function saveFieldConfig() {
+  try {
+    await db.collection('settings').doc('fieldConfig').set(fieldConfig);
+    showToast('Felder gespeichert ✓');
+    closeOverlay('settingsOverlay');
+    renderKeys();
+    renderLocks();
+  } catch(e) {
+    showToast('Fehler beim Speichern');
+  }
+}
+
+function allKeyFields() {
+  return [...fieldConfig.keyFields, ...fieldConfig.keyCustomFields];
+}
+function allLockFields() {
+  return [...fieldConfig.lockFields, ...fieldConfig.lockCustomFields];
+}
+function getLabel(fields, id) {
+  const f = fields.find(f => f.id === id);
+  return f ? f.label : id;
+}
+
+// ── RENDER: KEYS ─────────────────────────────────────────
+function renderKeys() {
+  const arts = ['Alle', ...new Set(allKeys.map(k => k.art).filter(Boolean).sort())];
+  const tabs = document.getElementById('filterTabsKeys');
+  tabs.innerHTML = arts.map(a =>
+    `<button class="filter-tab${a===filterKey?' active':''}" onclick="setFilterKey('${a.replace(/'/g,"\\'")}')">${a}</button>`
+  ).join('');
+
+  const q = searchText.toLowerCase();
+  const filtered = allKeys.filter(k => {
+    if (filterKey !== 'Alle' && k.art !== filterKey) return false;
+    if (!q) return true;
+    return Object.values(k).some(v => String(v||'').toLowerCase().includes(q));
+  });
+
+  const active   = filtered.filter(k => !isReturned(k));
+  const returned = filtered.filter(k => isReturned(k));
+
+  // Stats
+  const statsEl = document.getElementById('statsBarKeys');
+  statsEl.innerHTML =
+    `<div class="stat-chip">Gesamt: <span>${filtered.length}</span></div>` +
+    `<div class="stat-chip">Aktiv: <span>${active.length}</span></div>` +
+    (returned.length ? `<div class="stat-chip">Abgegeben: <span>${returned.length}</span></div>` : '') +
+    (allKeys.filter(k=>k.pfand&&Number(k.pfand)>0).length ?
+      `<div class="stat-chip">Mit Pfand: <span>${allKeys.filter(k=>k.pfand&&Number(k.pfand)>0).length}</span></div>` : '');
+
+  const list = document.getElementById('listKeys');
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">🔑</div><p>Keine Einträge gefunden</p></div>`;
+    return;
+  }
+
+  list.innerHTML = [...active, ...returned].map(k => {
+    const ret = isReturned(k);
+    const dep = k.pfand && Number(k.pfand) > 0;
+    const cls = ret ? 'returned' : dep ? 'deposit' : '';
+    const ini = initials(k.nachname, k.vorname);
+    const badges = [];
+    if (k.nummer) badges.push(`<span class="badge num">Nr. ${k.nummer}</span>`);
+    if (k.datum)  badges.push(`<span class="badge date">${k.datum}</span>`);
+    if (dep)      badges.push(`<span class="badge pfand">Pfand ${k.pfand} €</span>`);
+    if (ret)      badges.push(`<span class="badge warn">abgegeben</span>`);
+    allKeyFields().filter(f => f.id.startsWith('custom_') && k[f.id])
+      .forEach(f => badges.push(`<span class="badge">${f.label}: ${k[f.id]}</span>`));
+    return `<div class="key-card ${cls}" onclick="showKeyDetail('${k.id}')">
+      <div class="card-inner">
+        <div class="card-avatar">${ini}</div>
+        <div class="card-content">
+          <div class="card-name">${esc(k.nachname)}${k.vorname?' '+esc(k.vorname):''}</div>
+          <div class="card-type">${esc(k.art||'–')}</div>
+          ${badges.length?`<div class="card-meta">${badges.join('')}</div>`:''}
+        </div>
+        <span class="card-arrow">›</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('headerSub').textContent =
+    `${active.length} aktiv${returned.length?' · '+returned.length+' abgegeben':''}`;
+}
+
+// ── RENDER: LOCKS ─────────────────────────────────────────
+function renderLocks() {
+  const tabs = document.getElementById('filterTabsLocks');
+  const cats = ['Alle', 'OK', 'Fehlend'];
+  tabs.innerHTML = cats.map(c =>
+    `<button class="filter-tab${c===filterLock?' active':''}" onclick="setFilterLock('${c}')">${c}</button>`
+  ).join('');
+
+  const q = searchText.toLowerCase();
+  const filtered = allLocks.filter(l => {
+    const holders = allKeys.filter(k => k.art === l.name && !isReturned(k));
+    const diff = (l.anzahl||0) - holders.length;
+    if (filterLock === 'OK' && diff !== 0) return false;
+    if (filterLock === 'Fehlend' && diff >= 0) return false;
+    if (!q) return true;
+    return Object.values(l).some(v => String(v||'').toLowerCase().includes(q));
+  }).sort((a,b) => (a.nr||0)-(b.nr||0));
+
+  const list = document.getElementById('listLocks');
+  const statsEl = document.getElementById('statsBarLocks');
+  statsEl.innerHTML = `<div class="stat-chip">Schlösser: <span>${allLocks.length}</span></div>`;
+
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">🚪</div><p>Keine Schlösser gefunden</p></div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(l => {
+    const holders = allKeys.filter(k => k.art === l.name && !isReturned(k));
+    const diff = (l.anzahl||0) - holders.length;
+    const cls = diff > 0 ? 'warn-card' : diff < 0 ? 'ok-card' : 'ok-card';
+    const badges = [];
+    if (l.anzahl !== undefined) badges.push(`<span class="badge num">${holders.length}/${l.anzahl} vergeben</span>`);
+    if (diff > 0) badges.push(`<span class="badge warn">${diff} fehlen</span>`);
+    allLockFields().filter(f => f.id.startsWith('custom_') && l[f.id])
+      .forEach(f => badges.push(`<span class="badge">${f.label}: ${l[f.id]}</span>`));
+    return `<div class="lock-card ${cls}" onclick="showLockDetail('${l.id}')">
+      <div class="lock-inner">
+        <div class="lock-num">${l.nr||'?'}</div>
+        <div class="lock-content">
+          <div class="lock-name">${esc(l.name||'–')}</div>
+          ${badges.length?`<div class="lock-meta">${badges.join('')}</div>`:''}
+        </div>
+        <span class="card-arrow">›</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── DETAIL: KEY ───────────────────────────────────────────
+function showKeyDetail(id) {
+  const k = allKeys.find(x => x.id === id);
+  if (!k) return;
+  const ret = isReturned(k);
+  const dep = k.pfand && Number(k.pfand) > 0;
+  const heroClass = ret ? 'grey' : dep ? 'orange' : 'blue';
+  const ini = initials(k.nachname, k.vorname);
+
+  let rows = allKeyFields().map(f => {
+    const val = k[f.id];
+    if (!val && val !== 0) return '';
+    let icon = '📋';
+    if (f.id==='telefon') icon='📞';
+    else if (f.id==='datum') icon='📅';
+    else if (f.id==='pfand') icon='💰';
+    else if (f.id==='art') icon='🔑';
+    else if (f.id==='nummer') icon='#️⃣';
+    else if (f.id==='bemerkung') icon='💬';
+    const display = f.id==='telefon' ? `<a href="tel:${val}">${esc(val)}</a>` : esc(String(val));
+    return `<div class="detail-row">
+      <div class="detail-icon">${icon}</div>
+      <div><div class="detail-label">${esc(f.label)}</div><div class="detail-value">${display}</div></div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('detailContent').innerHTML = `
+    <div class="detail-hero ${heroClass}">
+      <div class="detail-avatar">${ini}</div>
+      <div>
+        <div class="detail-name">${esc(k.nachname||'')} ${esc(k.vorname||'')}</div>
+        <div class="detail-type">${esc(k.art||'')}</div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Schlüsseldaten</div>
+      <div class="detail-rows">${rows||'<div class="detail-row"><div class="detail-icon">ℹ️</div><div><div class="detail-value">Keine weiteren Daten</div></div></div>'}</div>
+    </div>
+    <div class="action-row">
+      <button class="btn-action btn-edit" onclick="openKeyForm('${id}')">✏️ Bearbeiten</button>
+      <button class="btn-action btn-delete" onclick="askDelete('${id}','key','${esc(k.nachname)} ${esc(k.vorname||'')}')">🗑️ Löschen</button>
+    </div>`;
+  openOverlay('detailOverlay');
+}
+
+// ── DETAIL: LOCK ──────────────────────────────────────────
+function showLockDetail(id) {
+  const l = allLocks.find(x => x.id === id);
+  if (!l) return;
+  const holders = allKeys.filter(k => k.art === l.name && !isReturned(k));
+  const diff = (l.anzahl||0) - holders.length;
+
+  let rows = allLockFields().map(f => {
+    const val = l[f.id];
+    if (f.id==='name' || f.id==='nr') return '';
+    if (!val && val !== 0) return '';
+    return `<div class="detail-row">
+      <div class="detail-icon">📋</div>
+      <div><div class="detail-label">${esc(f.label)}</div><div class="detail-value">${esc(String(val))}</div></div>
+    </div>`;
+  }).join('');
+
+  const holderList = holders.length ? holders.map(k =>
+    `<div class="holder-item" onclick="showKeyDetailByRef('${k.id}')">
+      <div class="holder-dot"></div>
+      <div class="holder-name">${esc(k.nachname||'')} ${esc(k.vorname||'')}</div>
+      <div class="holder-nr">${k.nummer||''}</div>
+    </div>`
+  ).join('') : '<div style="padding:10px 14px;color:var(--text-light);font-size:14px;">Keine aktiven Inhaber</div>';
+
+  document.getElementById('lockDetailContent').innerHTML = `
+    <div class="detail-hero navy">
+      <div class="detail-avatar" style="border-radius:10px;font-size:16px">${l.nr||'?'}</div>
+      <div>
+        <div class="detail-name">${esc(l.name||'–')}</div>
+        <div class="detail-type">${holders.length}/${l.anzahl||0} vergeben${diff>0?' · '+diff+' fehlen':''}</div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Schloss-Daten</div>
+      <div class="detail-rows">${rows||'<div class="detail-row"><div style="padding:2px 0;color:var(--text-light);font-size:13px">Keine weiteren Daten</div></div>'}</div>
+    </div>
+    <div class="holder-list">
+      <div class="holder-list-title">Aktuelle Inhaber (${holders.length})</div>
+      <div class="holder-items">${holderList}</div>
+    </div>
+    <div class="action-row">
+      <button class="btn-action btn-edit-navy" onclick="openLockForm('${id}')">✏️ Bearbeiten</button>
+      <button class="btn-action btn-delete" onclick="askDelete('${id}','lock','${esc(l.name||'')}')">🗑️ Löschen</button>
+    </div>`;
+  openOverlay('lockDetailOverlay');
+}
+
+function showKeyDetailByRef(id) {
+  closeOverlay('lockDetailOverlay');
+  setTimeout(() => showKeyDetail(id), 320);
+}
+
+// ── FORMS ─────────────────────────────────────────────────
+function openKeyForm(id = null) {
+  const k = id ? allKeys.find(x => x.id === id) : null;
+  document.getElementById('formTitle').textContent = k ? 'Eintrag bearbeiten' : 'Neuer Eintrag';
+  document.getElementById('fId').value = id || '';
+
+  const fields = allKeyFields();
+  const artVals = [...new Set(allKeys.map(x=>x.art).filter(Boolean))].sort();
+  const datalist = `<datalist id="artListDL">${artVals.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>`;
+
+  let html = datalist;
+  // Nachname + Vorname immer nebeneinander
+  const nf = fields.find(f=>f.id==='nachname'), vf = fields.find(f=>f.id==='vorname');
+  if (nf && vf) {
+    html += `<div class="form-row">
+      <div class="form-group"><label class="form-label">${esc(nf.label)}</label><input class="form-input" id="fi_nachname" placeholder="Mustermann" value="${esc(k?.nachname||'')}"></div>
+      <div class="form-group"><label class="form-label">${esc(vf.label)}</label><input class="form-input" id="fi_vorname" placeholder="Max" value="${esc(k?.vorname||'')}"></div>
+    </div>`;
+  }
+  const skip = new Set(['nachname','vorname']);
+  fields.forEach(f => {
+    if (skip.has(f.id)) return;
+    const val = k ? (k[f.id]||'') : '';
+    const extra = f.id==='art' ? ` list="artListDL"` : '';
+    const inp = f.type==='date' ? `<input type="date" class="form-input" id="fi_${f.id}" value="${esc(val)}">` :
+                f.type==='number' ? `<input type="number" class="form-input" id="fi_${f.id}" placeholder="0" value="${esc(val)}">` :
+                f.type==='tel' ? `<input type="tel" class="form-input" id="fi_${f.id}" placeholder="05351 …" value="${esc(val)}">` :
+                `<input class="form-input" id="fi_${f.id}" placeholder="${f.id==='bemerkung'?'Optional':''}"${extra} value="${esc(val)}">`;
+    html += `<div class="form-group"><label class="form-label">${esc(f.label)}</label>${inp}</div>`;
+  });
+
+  const body = document.getElementById('keyFormBody');
+  body.innerHTML = html + '<input type="hidden" id="fId" value="'+(id||'')+'">' +
+    '<button class="btn-save blue" id="keySaveBtn" onclick="saveEntry()">💾 &nbsp;Speichern</button>';
+
+  closeOverlay('detailOverlay');
+  setTimeout(() => openOverlay('formOverlay'), 300);
+}
+
+function openLockForm(id = null) {
+  const l = id ? allLocks.find(x => x.id === id) : null;
+  document.getElementById('lockFormTitle').textContent = l ? 'Schloss bearbeiten' : 'Neues Schloss';
+  document.getElementById('lfId').value = id || '';
+
+  const fields = allLockFields();
+  let html = '';
+  const nrF = fields.find(f=>f.id==='nr'), nameF = fields.find(f=>f.id==='name');
+  if (nrF && nameF) {
+    html += `<div class="form-row">
+      <div class="form-group"><label class="form-label">${esc(nrF.label)}</label><input type="number" class="form-input" id="lfi_nr" placeholder="1" value="${esc(l?.nr||'')}"></div>
+      <div class="form-group"><label class="form-label">${esc(nameF.label)}</label><input class="form-input" id="lfi_name" placeholder="z.B. Geschäftszimmer" value="${esc(l?.name||'')}"></div>
+    </div>`;
+  }
+  const skip = new Set(['nr','name']);
+  fields.forEach(f => {
+    if (skip.has(f.id)) return;
+    const val = l ? (l[f.id]||'') : '';
+    const inp = f.type==='number' ? `<input type="number" class="form-input" id="lfi_${f.id}" placeholder="0" value="${esc(val)}">` :
+                `<input class="form-input" id="lfi_${f.id}" placeholder="${f.id==='bemerkung'?'Optional':''}" value="${esc(val)}">`;
+    html += `<div class="form-group"><label class="form-label">${esc(f.label)}</label>${inp}</div>`;
+  });
+
+  const body = document.getElementById('lockFormBody');
+  body.innerHTML = html + '<input type="hidden" id="lfId" value="'+(id||'')+'">' +
+    '<button class="btn-save navy" id="lockSaveBtn" onclick="saveLock()">💾 &nbsp;Speichern</button>';
+
+  closeOverlay('lockDetailOverlay');
+  setTimeout(() => openOverlay('lockFormOverlay'), 300);
+}
+
+async function saveEntry() {
+  const btn = document.getElementById('keySaveBtn');
+  btn.disabled = true;
+  const id = document.querySelector('#keyFormBody [id="fId"]')?.value ||
+             document.getElementById('fId')?.value || '';
+  const data = {};
+  allKeyFields().forEach(f => {
+    const el = document.getElementById('fi_'+f.id);
+    if (el) data[f.id] = el.value.trim();
+  });
+  try {
+    if (id) await db.collection('keys').doc(id).update(data);
+    else    await db.collection('keys').add(data);
+    closeOverlay('formOverlay');
+    showToast(id ? 'Gespeichert ✓' : 'Angelegt ✓');
+  } catch(e) { showToast('Fehler: '+e.message); }
+  btn.disabled = false;
+}
+
+async function saveLock() {
+  const btn = document.getElementById('lockSaveBtn');
+  btn.disabled = true;
+  const id = document.querySelector('#lockFormBody [id="lfId"]')?.value ||
+             document.getElementById('lfId')?.value || '';
+  const data = {};
+  allLockFields().forEach(f => {
+    const el = document.getElementById('lfi_'+f.id);
+    if (el) {
+      data[f.id] = f.type==='number' ? (Number(el.value)||0) : el.value.trim();
+    }
+  });
+  try {
+    if (id) await db.collection('locks').doc(id).update(data);
+    else    await db.collection('locks').add(data);
+    closeOverlay('lockFormOverlay');
+    showToast(id ? 'Gespeichert ✓' : 'Angelegt ✓');
+  } catch(e) { showToast('Fehler: '+e.message); }
+  btn.disabled = false;
+}
+
+// ── DELETE ────────────────────────────────────────────────
+function askDelete(id, type, name) {
+  pendingDeleteId = id;
+  pendingDeleteType = type;
+  document.getElementById('confirmText').textContent = `"${name}" wird unwiderruflich gelöscht.`;
+  document.getElementById('confirmOverlay').classList.add('open');
+}
+
+async function confirmDelete() {
+  if (!pendingDeleteId) return;
+  try {
+    await db.collection(pendingDeleteType==='key'?'keys':'locks').doc(pendingDeleteId).delete();
+    closeConfirm();
+    closeOverlay('detailOverlay');
+    closeOverlay('lockDetailOverlay');
+    showToast('Gelöscht ✓');
+  } catch(e) { showToast('Fehler: '+e.message); }
+}
+
+function closeConfirm() {
+  document.getElementById('confirmOverlay').classList.remove('open');
+  pendingDeleteId = null;
+  pendingDeleteType = null;
+}
+
+// ── SETTINGS ─────────────────────────────────────────────
+function openSettings() {
+  renderSettingsUI();
+  openOverlay('settingsOverlay');
+}
+
+function renderSettingsUI() {
+  const cont = document.getElementById('settingsContent');
+
+  function fieldRowsHtml(fields, customFields, prefix) {
+    let html = '';
+    // Fixe Felder: nur umbenennen
+    fields.forEach((f, i) => {
+      html += `<div class="field-row">
+        <div class="field-row-badge">${f.fixed?'📌':'⚙️'}</div>
+        <input type="text" value="${esc(f.label)}" onchange="updateFieldLabel('${prefix}',${i},this.value,'fixed')" placeholder="Feldname">
+        <span style="font-size:11px;color:var(--text-light);flex-shrink:0">(${f.id})</span>
+      </div>`;
+    });
+    // Custom-Felder: umbenennen + löschen
+    customFields.forEach((f, i) => {
+      html += `<div class="field-row">
+        <div class="field-row-badge">✨ neu</div>
+        <input type="text" value="${esc(f.label)}" onchange="updateFieldLabel('${prefix}',${i},this.value,'custom')" placeholder="Feldname">
+        <select class="field-type-select" onchange="updateFieldType('${prefix}',${i},this.value)">
+          <option value="text"${f.type==='text'?' selected':''}>Text</option>
+          <option value="number"${f.type==='number'?' selected':''}>Zahl</option>
+          <option value="date"${f.type==='date'?' selected':''}>Datum</option>
+        </select>
+        <button class="btn-remove-field" onclick="removeCustomField('${prefix}',${i})">✕</button>
+      </div>`;
+    });
+    html += `<button class="btn-add-field" onclick="addCustomField('${prefix}')">＋ Neues Feld hinzufügen</button>`;
+    return html;
+  }
+
+  cont.innerHTML = `
+    <div class="settings-section-title" style="border-top:none;margin-top:0">🔑 Schlüssel-Felder</div>
+    ${fieldRowsHtml(fieldConfig.keyFields, fieldConfig.keyCustomFields, 'key')}
+    <div class="settings-section-title">🚪 Schloss-Felder</div>
+    ${fieldRowsHtml(fieldConfig.lockFields, fieldConfig.lockCustomFields, 'lock')}
+    <button class="btn-save-settings" onclick="saveFieldConfig()">💾 Einstellungen speichern</button>
+    <div style="height:20px"></div>
+  `;
+}
+
+function updateFieldLabel(prefix, idx, val, kind) {
+  if (kind==='fixed') fieldConfig[prefix+'Fields'][idx].label = val;
+  else fieldConfig[prefix+'CustomFields'][idx].label = val;
+}
+function updateFieldType(prefix, idx, val) {
+  fieldConfig[prefix+'CustomFields'][idx].type = val;
+}
+function addCustomField(prefix) {
+  const id = 'custom_' + Date.now();
+  fieldConfig[prefix+'CustomFields'].push({id, label:'Neues Feld', type:'text', fixed:false});
+  renderSettingsUI();
+}
+function removeCustomField(prefix, idx) {
+  fieldConfig[prefix+'CustomFields'].splice(idx, 1);
+  renderSettingsUI();
+}
+
+// ── STATS ─────────────────────────────────────────────────
+function showStats() {
+  const active   = allKeys.filter(k => !isReturned(k));
+  const returned = allKeys.filter(k => isReturned(k));
+  const mitPfand = allKeys.filter(k => k.pfand && Number(k.pfand)>0);
+  const pfandSum = allKeys.reduce((s,k) => s + (Number(k.pfand)||0), 0);
+  const arts = [...new Set(allKeys.map(k=>k.art).filter(Boolean))];
+
+  document.getElementById('statsContent').innerHTML = `
+    <div class="stats-grid">
+      <div class="stats-tile"><div class="big">${allKeys.length}</div><div class="lbl">Einträge gesamt</div></div>
+      <div class="stats-tile"><div class="big">${active.length}</div><div class="lbl">Aktiv</div></div>
+      <div class="stats-tile"><div class="big">${returned.length}</div><div class="lbl">Abgegeben</div></div>
+      <div class="stats-tile"><div class="big">${mitPfand.length}</div><div class="lbl">Mit Pfand</div></div>
+      <div class="stats-tile"><div class="big">${pfandSum} €</div><div class="lbl">Pfand gesamt</div></div>
+      <div class="stats-tile"><div class="big">${allLocks.length}</div><div class="lbl">Schlösser</div></div>
+    </div>
+    <div class="detail-section-title" style="padding:0 0 8px">Schlüsselarten (${arts.length})</div>
+    ${arts.map(a => {
+      const cnt = allKeys.filter(k=>k.art===a && !isReturned(k)).length;
+      return `<div class="detail-row" style="border:1px solid var(--border);border-radius:8px;margin-bottom:6px;padding:8px 12px;background:var(--bg)">
+        <div style="flex:1;font-size:14px;font-weight:500">${esc(a)}</div>
+        <span class="badge num">${cnt}</span>
+      </div>`;
+    }).join('')}`;
+  openOverlay('statsOverlay');
+}
+
+// ── TAB / FILTER / SEARCH ─────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('viewKeys').classList.toggle('active', tab==='keys');
+  document.getElementById('viewLocks').classList.toggle('active', tab==='locks');
+  document.getElementById('navKeys').classList.toggle('active', tab==='keys');
+  document.getElementById('navLocks').classList.toggle('active', tab==='locks');
+  const hdr = document.getElementById('mainHeader');
+  hdr.className = tab==='keys' ? 'tab-keys' : 'tab-locks';
+  document.getElementById('headerTitle').textContent = tab==='keys' ? '🔑 Schlüsselinhaber' : '🚪 Schlösser';
+  document.getElementById('headerSub').textContent = '';
+  document.getElementById('fabBtn').style.background = tab==='keys' ? 'var(--blue)' : 'var(--navy)';
+  if (tab==='keys') renderKeys(); else renderLocks();
+}
+
+function setFilterKey(val) { filterKey = val; renderKeys(); }
+function setFilterLock(val) { filterLock = val; renderLocks(); }
+
+function onSearch() {
+  searchText = document.getElementById('searchInput').value;
+  document.getElementById('searchClearBtn').style.display = searchText ? '' : 'none';
+  if (currentTab==='keys') renderKeys(); else renderLocks();
+}
+function clearSearch() {
+  document.getElementById('searchInput').value = '';
+  searchText = '';
+  document.getElementById('searchClearBtn').style.display = 'none';
+  if (currentTab==='keys') renderKeys(); else renderLocks();
+}
+
+function fabAction() {
+  if (currentTab==='keys') openKeyForm();
+  else openLockForm();
+}
+
+// ── OVERLAY ───────────────────────────────────────────────
+function openOverlay(id)  { document.getElementById(id).classList.add('open'); }
+function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── HELPERS ───────────────────────────────────────────────
+function isReturned(k) {
+  return (k.art||'').toLowerCase().includes('abgegeben') ||
+         (k.bemerkung||'').toLowerCase().includes('abgegeben') ||
+         (k.bemerkung||'').toLowerCase().includes('rückgabe');
+}
+
+function initials(nachname, vorname) {
+  const n = (nachname||'').trim()[0] || '';
+  const v = (vorname||'').trim()[0] || '';
+  return (n+v).toUpperCase() || '?';
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>
