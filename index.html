@@ -174,6 +174,13 @@
   .btn-save.navy { background: var(--navy); }
   .btn-save:disabled { opacity: 0.55; }
 
+  /* ── LOCK GROUP HEADER ── */
+  .lock-group-hdr { display: flex; align-items: center; gap: 8px; padding: 12px 4px 5px; margin-top: 4px; }
+  .lock-group-hdr:first-child { padding-top: 4px; margin-top: 0; }
+  .lock-group-label { font-size: 12px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; flex: 1; }
+  .lock-group-badge { font-size: 11px; color: var(--text-light); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px; }
+  .lock-group-items { margin-left: 8px; border-left: 2px solid var(--border); padding-left: 8px; margin-bottom: 4px; }
+
   /* ── LOCK FORM INHABER ── */
   .lf-section-title { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.6px; padding: 14px 0 8px; border-top: 1px solid var(--border); margin-top: 4px; }
   .lf-holders-empty { font-size: 13px; color: var(--text-light); padding: 8px 0 4px; font-style: italic; }
@@ -501,6 +508,7 @@ const DEFAULT_KEY_FIELDS = [
 const DEFAULT_LOCK_FIELDS = [
   {id:'nr',      label:'Nr.',              type:'number', fixed:true},
   {id:'name',    label:'Tür / Schloss',    type:'text',   fixed:true},
+  {id:'gruppe',  label:'Gruppe',           type:'text',   fixed:false},
   {id:'anzahl',  label:'Anzahl Schlüssel', type:'number', fixed:false},
   {id:'bemerkung',label:'Bemerkung',       type:'text',   fixed:false},
 ];
@@ -582,6 +590,12 @@ async function loadFieldConfig() {
       if (data.lockFields)      fieldConfig.lockFields      = data.lockFields;
       if (data.keyCustomFields) fieldConfig.keyCustomFields = data.keyCustomFields;
       if (data.lockCustomFields)fieldConfig.lockCustomFields = data.lockCustomFields;
+    }
+    // Migration: Gruppe-Feld nachrüsten falls noch nicht vorhanden
+    if (!fieldConfig.lockFields.find(f => f.id === 'gruppe')) {
+      const anzahlIdx = fieldConfig.lockFields.findIndex(f => f.id === 'anzahl');
+      const insertAt = anzahlIdx >= 0 ? anzahlIdx : fieldConfig.lockFields.length;
+      fieldConfig.lockFields.splice(insertAt, 0, {id:'gruppe', label:'Gruppe', type:'text', fixed:false});
     }
   } catch(e) { /* offline: defaults verwenden */ }
 }
@@ -759,10 +773,10 @@ function renderLocks() {
     return;
   }
 
-  list.innerHTML = filtered.map(l => {
+  const lockCard = l => {
     const holders = allKeys.filter(k => k.art === l.name && !isReturned(k));
     const diff = (l.anzahl||0) - holders.length;
-    const cls = diff > 0 ? 'warn-card' : diff < 0 ? 'ok-card' : 'ok-card';
+    const cls = diff > 0 ? 'warn-card' : 'ok-card';
     const badges = [];
     if (l.anzahl !== undefined) badges.push(`<span class="badge num">${holders.length}/${l.anzahl} vergeben</span>`);
     if (diff > 0) badges.push(`<span class="badge warn">${diff} fehlen</span>`);
@@ -778,7 +792,35 @@ function renderLocks() {
         <span class="card-arrow">›</span>
       </div>
     </div>`;
-  }).join('');
+  };
+
+  // Gruppieren: Schlösser mit Gruppe zusammenfassen, ohne Gruppe einzeln
+  const grouped   = new Map();
+  const ungrouped = [];
+  for (const l of filtered) {
+    if (l.gruppe) {
+      if (!grouped.has(l.gruppe)) grouped.set(l.gruppe, []);
+      grouped.get(l.gruppe).push(l);
+    } else {
+      ungrouped.push(l);
+    }
+  }
+
+  let html = '';
+  // Gruppen zuerst (alphabetisch)
+  [...grouped.entries()].sort(([a],[b]) => a.localeCompare(b, 'de')).forEach(([grp, locks]) => {
+    const totalVergeben = locks.reduce((s,l) => s + allKeys.filter(k=>k.art===l.name&&!isReturned(k)).length, 0);
+    const totalAnzahl   = locks.reduce((s,l) => s + (l.anzahl||0), 0);
+    html += `<div class="lock-group-hdr">
+      <span class="lock-group-label">📦 ${esc(grp)}</span>
+      <span class="lock-group-badge">${totalVergeben}/${totalAnzahl}</span>
+    </div>
+    <div class="lock-group-items">${locks.map(lockCard).join('')}</div>`;
+  });
+  // Ungrouped danach
+  html += ungrouped.map(l => lockCard(l)).join('');
+
+  list.innerHTML = html;
 }
 
 // ── DETAIL: KEY ───────────────────────────────────────────
@@ -934,12 +976,17 @@ function openLockForm(id = null) {
       <div class="form-group"><label class="form-label">${esc(nameF.label)}</label><input class="form-input" id="lfi_name" placeholder="z.B. Geschäftszimmer" value="${esc(l?.name||'')}"></div>
     </div>`;
   }
+  // Datalist für Gruppe-Autocomplete
+  const gruppeVals = [...new Set(allLocks.map(x=>x.gruppe).filter(Boolean))].sort();
+  html += `<datalist id="gruppeListDL">${gruppeVals.map(g=>`<option value="${esc(g)}">`).join('')}</datalist>`;
+
   const skip = new Set(['nr','name']);
   fields.forEach(f => {
     if (skip.has(f.id)) return;
     const val = l ? (l[f.id]||'') : '';
+    const extra = f.id==='gruppe' ? ` list="gruppeListDL" placeholder="z.B. Schrank Umkleide Herren"` : '';
     const inp = f.type==='number' ? `<input type="number" class="form-input" id="lfi_${f.id}" placeholder="0" value="${esc(val)}">` :
-                `<input class="form-input" id="lfi_${f.id}" placeholder="${f.id==='bemerkung'?'Optional':''}" value="${esc(val)}">`;
+                `<input class="form-input" id="lfi_${f.id}"${extra} placeholder="${f.id==='bemerkung'?'Optional':f.id==='gruppe'?'Optional – leer lassen für keine Gruppe':''}" value="${esc(val)}">`;
     html += `<div class="form-group"><label class="form-label">${esc(f.label)}</label>${inp}</div>`;
   });
 
