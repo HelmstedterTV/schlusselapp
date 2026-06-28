@@ -174,6 +174,22 @@
   .btn-save.navy { background: var(--navy); }
   .btn-save:disabled { opacity: 0.55; }
 
+  /* ── LOCK FORM INHABER ── */
+  .lf-section-title { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.6px; padding: 14px 0 8px; border-top: 1px solid var(--border); margin-top: 4px; }
+  .lf-holders-empty { font-size: 13px; color: var(--text-light); padding: 8px 0 4px; font-style: italic; }
+  .lf-holder-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 6px; }
+  .lf-holder-name { flex: 1; font-size: 14px; font-weight: 500; }
+  .lf-count-wrap { display: flex; align-items: center; gap: 4px; }
+  .lf-count-btn { width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--border); background: var(--card); color: var(--blue); font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
+  .lf-count-btn:active { background: var(--accent-bg); }
+  .lf-count-val { font-size: 14px; font-weight: 700; color: var(--blue); min-width: 20px; text-align: center; }
+  .lf-holder-del { background: none; border: none; color: #9ca3af; font-size: 16px; cursor: pointer; padding: 4px; flex-shrink: 0; }
+  .lf-holder-del:active { color: var(--danger); }
+  .lf-add-panel { margin-top: 6px; }
+  .lf-select { appearance: auto; -webkit-appearance: auto; }
+  .btn-lf-add { width: 100%; margin-top: 8px; padding: 10px; background: var(--accent-bg); border: 1px dashed rgba(0,98,204,0.35); border-radius: 10px; color: var(--blue); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-lf-add:active { background: rgba(0,98,204,0.15); }
+
   /* ── SETTINGS ── */
   .settings-section { padding: 0 16px 12px; }
   .settings-section-title { font-size: 12px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; padding: 14px 0 8px; border-top: 1px solid var(--border); margin-top: 8px; }
@@ -493,6 +509,8 @@ const DEFAULT_LOCK_FIELDS = [
 let db, allKeys = [], allLocks = [], currentTab = 'keys';
 let filterKey = 'Alle', filterLock = 'Alle', searchText = '';
 let pendingDeleteId = null, pendingDeleteType = null;
+let pendingLockHolders = []; // [{nachname, vorname, existingIds[], targetCount}]
+let originalLockHolderIds = []; // key-IDs die beim Öffnen des Forms vorhanden waren
 let fieldConfig = {
   keyFields: JSON.parse(JSON.stringify(DEFAULT_KEY_FIELDS)),
   lockFields: JSON.parse(JSON.stringify(DEFAULT_LOCK_FIELDS)),
@@ -862,12 +880,139 @@ function openLockForm(id = null) {
     html += `<div class="form-group"><label class="form-label">${esc(f.label)}</label>${inp}</div>`;
   });
 
+  // — Inhaber-Sektion —
+  const lockName = l?.name || '';
+  const currentHolders = lockName ? allKeys.filter(k => k.art === lockName && !isReturned(k)) : [];
+  // Gruppieren nach Person
+  const holderMap = new Map();
+  for (const k of currentHolders) {
+    const pkey = `${k.nachname||''}||${k.vorname||''}`;
+    if (!holderMap.has(pkey)) holderMap.set(pkey, {nachname:k.nachname||'', vorname:k.vorname||'', existingIds:[], targetCount:0});
+    holderMap.get(pkey).existingIds.push(k.id);
+    holderMap.get(pkey).targetCount++;
+  }
+  pendingLockHolders = [...holderMap.values()];
+  originalLockHolderIds = currentHolders.map(k => k.id);
+
+  // Alle bekannten Personen für Dropdown
+  const allPersons = [...new Map(allKeys.map(k => [`${k.nachname||''}||${k.vorname||''}`, k])).values()]
+    .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||''));
+  const personOptions = allPersons.map(p =>
+    `<option value="${esc(p.nachname||'')}||${esc(p.vorname||'')}">${esc(p.nachname||'')} ${esc(p.vorname||'')}</option>`
+  ).join('');
+
+  html += `
+  <div class="lf-section-title">Schlüssel-Inhaber</div>
+  <div id="lf-holders-list"></div>
+  <div class="lf-add-panel">
+    <div class="form-row" style="grid-template-columns:1fr 70px;gap:8px;align-items:flex-end">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Person</label>
+        <select class="form-input lf-select" id="lf-person-sel" onchange="onLockPersonSelectChange()">
+          <option value="">— Person wählen —</option>
+          <option value="__new__">➕ Neue Person anlegen …</option>
+          ${personOptions}
+        </select>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Anzahl</label>
+        <input type="number" class="form-input" id="lf-count-inp" min="1" value="1" style="text-align:center;padding:11px 6px">
+      </div>
+    </div>
+    <div id="lf-new-person-fields" style="display:none;margin-top:8px">
+      <div class="form-row">
+        <div class="form-group" style="margin:0"><label class="form-label">Nachname</label><input class="form-input" id="lf-new-nachname" placeholder="Mustermann"></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Vorname</label><input class="form-input" id="lf-new-vorname" placeholder="Max"></div>
+      </div>
+    </div>
+    <button class="btn-lf-add" onclick="addLockHolder()">+ Inhaber hinzufügen</button>
+  </div>`;
+
   const body = document.getElementById('lockFormBody');
   body.innerHTML = html + '<input type="hidden" id="lfId" value="'+(id||'')+'">' +
     '<button class="btn-save navy" id="lockSaveBtn" onclick="saveLock()">💾 &nbsp;Speichern</button>';
 
+  renderLockHoldersList();
   closeOverlay('lockDetailOverlay');
   setTimeout(() => openOverlay('lockFormOverlay'), 300);
+}
+
+function renderLockHoldersList() {
+  const el = document.getElementById('lf-holders-list');
+  if (!el) return;
+  if (pendingLockHolders.length === 0) {
+    el.innerHTML = '<div class="lf-holders-empty">Noch keine Inhaber zugewiesen</div>';
+    return;
+  }
+  el.innerHTML = pendingLockHolders.map((h, i) => `
+    <div class="lf-holder-row">
+      <div class="lf-holder-name">${esc(h.nachname)} ${esc(h.vorname)}</div>
+      <div class="lf-count-wrap">
+        <button class="lf-count-btn" onclick="changeLockHolderCount(${i},-1)">−</button>
+        <span class="lf-count-val">${h.targetCount}</span>
+        <button class="lf-count-btn" onclick="changeLockHolderCount(${i},1)">+</button>
+      </div>
+      <button class="lf-holder-del" onclick="removeLockHolder(${i})" title="Entfernen">✕</button>
+    </div>
+  `).join('');
+}
+
+function onLockPersonSelectChange() {
+  const sel = document.getElementById('lf-person-sel');
+  const newFields = document.getElementById('lf-new-person-fields');
+  if (newFields) newFields.style.display = sel.value === '__new__' ? 'block' : 'none';
+}
+
+function addLockHolder() {
+  const sel = document.getElementById('lf-person-sel');
+  const countInp = document.getElementById('lf-count-inp');
+  const count = Math.max(1, parseInt(countInp?.value)||1);
+  let nachname = '', vorname = '';
+
+  if (sel.value === '__new__') {
+    nachname = (document.getElementById('lf-new-nachname')?.value||'').trim();
+    vorname  = (document.getElementById('lf-new-vorname')?.value||'').trim();
+    if (!nachname) { showToast('Bitte Nachname eingeben'); return; }
+  } else if (sel.value) {
+    const parts = sel.value.split('||');
+    nachname = parts[0]||'';
+    vorname  = parts[1]||'';
+  } else {
+    showToast('Bitte Person auswählen'); return;
+  }
+
+  const pkey = `${nachname}||${vorname}`;
+  const existing = pendingLockHolders.find(h => `${h.nachname}||${h.vorname}` === pkey);
+  if (existing) {
+    existing.targetCount += count;
+  } else {
+    pendingLockHolders.push({nachname, vorname, existingIds:[], targetCount:count});
+  }
+
+  // Formular zurücksetzen
+  sel.value = '';
+  if (countInp) countInp.value = '1';
+  const npf = document.getElementById('lf-new-person-fields');
+  if (npf) npf.style.display = 'none';
+  const nnEl = document.getElementById('lf-new-nachname');
+  const vnEl = document.getElementById('lf-new-vorname');
+  if (nnEl) nnEl.value = '';
+  if (vnEl) vnEl.value = '';
+
+  renderLockHoldersList();
+}
+
+function changeLockHolderCount(idx, delta) {
+  const h = pendingLockHolders[idx];
+  if (!h) return;
+  h.targetCount = Math.max(0, h.targetCount + delta);
+  if (h.targetCount === 0) pendingLockHolders.splice(idx, 1);
+  renderLockHoldersList();
+}
+
+function removeLockHolder(idx) {
+  pendingLockHolders.splice(idx, 1);
+  renderLockHoldersList();
 }
 
 async function saveEntry() {
@@ -901,9 +1046,34 @@ async function saveLock() {
       data[f.id] = f.type==='number' ? (Number(el.value)||0) : el.value.trim();
     }
   });
+  const lockName = data.name || '';
   try {
     if (id) await db.collection('locks').doc(id).update(data);
     else    await db.collection('locks').add(data);
+
+    // ── Inhaber synchronisieren ──
+    if (lockName) {
+      // Entfernte Inhaber löschen
+      for (const origId of originalLockHolderIds) {
+        const stillThere = pendingLockHolders.some(h => h.existingIds.includes(origId));
+        if (!stillThere) await db.collection('keys').doc(origId).delete();
+      }
+      // Anzahl-Abgleich pro Inhaber
+      for (const h of pendingLockHolders) {
+        const current = h.existingIds.length;
+        const target  = h.targetCount;
+        if (target > current) {
+          for (let i = 0; i < target - current; i++) {
+            await db.collection('keys').add({nachname: h.nachname, vorname: h.vorname, art: lockName});
+          }
+        } else if (target < current) {
+          for (let i = 0; i < current - target; i++) {
+            await db.collection('keys').doc(h.existingIds[current - 1 - i]).delete();
+          }
+        }
+      }
+    }
+
     closeOverlay('lockFormOverlay');
     showToast(id ? 'Gespeichert ✓' : 'Angelegt ✓');
   } catch(e) { showToast('Fehler: '+e.message); }
