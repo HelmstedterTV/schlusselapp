@@ -764,7 +764,7 @@ function renderLocks() {
 
   const q = searchText.toLowerCase();
   const filtered = allLocks.filter(l => {
-    const holders = allKeys.filter(k => k.art === l.name && !isReturned(k));
+    const holders = holdersForLock(l);
     const diff = (l.anzahl||0) - holders.length;
     if (filterLock === 'OK' && diff !== 0) return false;
     if (filterLock === 'Fehlend' && diff >= 0) return false;
@@ -782,7 +782,7 @@ function renderLocks() {
   }
 
   const lockCard = l => {
-    const holders = allKeys.filter(k => k.art === l.name && !isReturned(k));
+    const holders = holdersForLock(l);
     const diff = (l.anzahl||0) - holders.length;
     const cls = diff > 0 ? 'warn-card' : 'ok-card';
     const badges = [];
@@ -898,7 +898,7 @@ function showKeyDetail(id) {
 function showLockDetail(id) {
   const l = allLocks.find(x => x.id === id);
   if (!l) return;
-  const holders = allKeys.filter(k => k.art === l.name && !isReturned(k));
+  const holders = holdersForLock(l);
   const diff = (l.anzahl||0) - holders.length;
 
   let rows = allLockFields().map(f => {
@@ -1018,7 +1018,8 @@ function openLockForm(id = null) {
 
   // — Inhaber-Sektion —
   const lockName = l?.name || '';
-  const currentHolders = lockName ? allKeys.filter(k => k.art === lockName && !isReturned(k)) : [];
+  // Für bestehende Schlösser: lockId-basierter Filter, Fallback auf Namensvergleich
+  const currentHolders = l ? holdersForLock(l) : [];
   // Gruppieren nach Person
   const holderMap = new Map();
   for (const k of currentHolders) {
@@ -1184,8 +1185,14 @@ async function saveLock() {
   });
   const lockName = data.name || '';
   try {
-    if (id) await db.collection('locks').doc(id).update(data);
-    else    await db.collection('locks').add(data);
+    // Lock speichern, neue ID erfassen
+    let lockId = id;
+    if (id) {
+      await db.collection('locks').doc(id).update(data);
+    } else {
+      const newRef = await db.collection('locks').add(data);
+      lockId = newRef.id;
+    }
 
     // Noch nicht bestätigte Auswahl im Add-Formular automatisch übernehmen
     const pendingSel = document.getElementById('lf-person-sel');
@@ -1194,7 +1201,7 @@ async function saveLock() {
     }
 
     // ── Inhaber synchronisieren ──
-    if (lockName) {
+    if (lockName && lockId) {
       // Entfernte Inhaber löschen
       for (const origId of originalLockHolderIds) {
         const stillThere = pendingLockHolders.some(h => h.existingIds.includes(origId));
@@ -1206,7 +1213,8 @@ async function saveLock() {
         const target  = h.targetCount;
         if (target > current) {
           for (let i = 0; i < target - current; i++) {
-            await db.collection('keys').add({nachname: h.nachname, vorname: h.vorname, art: lockName});
+            // lockId speichern für eindeutige Zuordnung
+            await db.collection('keys').add({nachname: h.nachname, vorname: h.vorname, art: lockName, lockId});
           }
         } else if (target < current) {
           for (let i = 0; i < current - target; i++) {
@@ -1378,6 +1386,13 @@ function openOverlay(id)  { document.getElementById(id).classList.add('open'); }
 function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
 
 // ── HELPERS ───────────────────────────────────────────────
+// Gibt aktive Schlüssel für ein Schloss zurück.
+// Bevorzugt lockId-Verknüpfung (neue Einträge), Fallback auf k.art===l.name (Altdaten).
+function holdersForLock(l) {
+  return allKeys.filter(k => !isReturned(k) &&
+    (k.lockId ? k.lockId === l.id : k.art === l.name));
+}
+
 function isReturned(k) {
   return (k.art||'').toLowerCase().includes('abgegeben') ||
          (k.bemerkung||'').toLowerCase().includes('abgegeben') ||
