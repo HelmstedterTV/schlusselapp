@@ -925,7 +925,7 @@ function openLockForm(id = null) {
         <div class="form-group" style="margin:0"><label class="form-label">Vorname</label><input class="form-input" id="lf-new-vorname" placeholder="Max"></div>
       </div>
     </div>
-    <button class="btn-lf-add" onclick="addLockHolder()">+ Inhaber hinzufügen</button>
+    <button class="btn-lf-add" onclick="addLockHolder()">✓ Zur Liste hinzufügen</button>
   </div>`;
 
   const body = document.getElementById('lockFormBody');
@@ -1050,6 +1050,12 @@ async function saveLock() {
   try {
     if (id) await db.collection('locks').doc(id).update(data);
     else    await db.collection('locks').add(data);
+
+    // Noch nicht bestätigte Auswahl im Add-Formular automatisch übernehmen
+    const pendingSel = document.getElementById('lf-person-sel');
+    if (pendingSel && pendingSel.value && pendingSel.value !== '') {
+      addLockHolder();
+    }
 
     // ── Inhaber synchronisieren ──
     if (lockName) {
