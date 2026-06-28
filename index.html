@@ -241,7 +241,7 @@
 
 <!-- APP -->
 <div id="app">
-  <header id="mainHeader" class="tab-keys">
+  <header id="mainHeader" class="tab-locks">
     <div class="header-top">
       <div class="header-left">
         <div class="header-logo">
@@ -267,24 +267,24 @@
   </header>
 
   <!-- VIEW: SCHLÜSSEL -->
-  <div class="view active" id="viewKeys">
+  <div class="view" id="viewKeys">
     <div class="filter-wrap"><div class="filter-tabs" id="filterTabsKeys"></div></div>
     <div class="stats-bar" id="statsBarKeys"></div>
     <div class="list-container" id="listKeys"></div>
   </div>
 
   <!-- VIEW: SCHLÖSSER -->
-  <div class="view" id="viewLocks">
+  <div class="view active" id="viewLocks">
     <div class="filter-wrap"><div class="filter-tabs" id="filterTabsLocks"></div></div>
     <div class="stats-bar" id="statsBarLocks"></div>
     <div class="list-container" id="listLocks"></div>
   </div>
 
   <nav class="bottom-nav">
-    <button class="nav-btn active" id="navKeys" onclick="switchTab('keys')">
+    <button class="nav-btn" id="navKeys" onclick="switchTab('keys')">
       <span class="nav-icon">🔑</span><span class="nav-label">Inhaber</span>
     </button>
-    <button class="nav-btn" id="navLocks" onclick="switchTab('locks')">
+    <button class="nav-btn active" id="navLocks" onclick="switchTab('locks')">
       <span class="nav-icon">🚪</span><span class="nav-label">Schlösser</span>
     </button>
   </nav>
@@ -506,7 +506,7 @@ const DEFAULT_LOCK_FIELDS = [
 ];
 
 // ── STATE ────────────────────────────────────────────────
-let db, allKeys = [], allLocks = [], currentTab = 'keys';
+let db, allKeys = [], allLocks = [], currentTab = 'locks';
 let filterKey = 'Alle', filterLock = 'Alle', searchText = '';
 let pendingDeleteId = null, pendingDeleteType = null;
 let pendingLockHolders = []; // [{nachname, vorname, existingIds[], targetCount}]
@@ -609,57 +609,73 @@ function getLabel(fields, id) {
   return f ? f.label : id;
 }
 
-// ── RENDER: KEYS ─────────────────────────────────────────
+// ── RENDER: KEYS (gruppiert nach Person) ─────────────────
 function renderKeys() {
-  const arts = ['Alle', ...new Set(allKeys.map(k => k.art).filter(Boolean).sort())];
+  // Filter-Tabs: nach Schlossart
+  const arts = ['Alle', ...new Set(allKeys.filter(k=>!isReturned(k)).map(k => k.art).filter(Boolean).sort())];
   const tabs = document.getElementById('filterTabsKeys');
   tabs.innerHTML = arts.map(a =>
-    `<button class="filter-tab${a===filterKey?' active':''}" onclick="setFilterKey('${a.replace(/'/g,"\\'")}')">${a}</button>`
+    `<button class="filter-tab${a===filterKey?' active':''}" onclick="setFilterKey('${a.replace(/'/g,"\\'")}')">${esc(a)}</button>`
   ).join('');
 
   const q = searchText.toLowerCase();
-  const filtered = allKeys.filter(k => {
+
+  // Relevante Keys nach Art-Filter + Suche
+  let relevant = allKeys.filter(k => {
     if (filterKey !== 'Alle' && k.art !== filterKey) return false;
     if (!q) return true;
     return Object.values(k).some(v => String(v||'').toLowerCase().includes(q));
   });
 
-  const active   = filtered.filter(k => !isReturned(k));
-  const returned = filtered.filter(k => isReturned(k));
+  // Gruppieren nach Person
+  const personMap = new Map();
+  for (const k of relevant) {
+    const pkey = `${k.nachname||''}||${k.vorname||''}`;
+    if (!personMap.has(pkey)) {
+      personMap.set(pkey, {nachname: k.nachname||'', vorname: k.vorname||'', keys: [], pfandTotal: 0});
+    }
+    const p = personMap.get(pkey);
+    p.keys.push(k);
+    p.pfandTotal += Number(k.pfand)||0;
+  }
+
+  // Sortieren nach Nachname
+  const persons = [...personMap.entries()].sort(([,a],[,b]) => (a.nachname||'').localeCompare(b.nachname||'', 'de'));
+
+  const activePersons = persons.filter(([,p]) => p.keys.some(k => !isReturned(k)));
+  const pfandPersons  = persons.filter(([,p]) => p.pfandTotal > 0);
 
   // Stats
   const statsEl = document.getElementById('statsBarKeys');
   statsEl.innerHTML =
-    `<div class="stat-chip">Gesamt: <span>${filtered.length}</span></div>` +
-    `<div class="stat-chip">Aktiv: <span>${active.length}</span></div>` +
-    (returned.length ? `<div class="stat-chip">Abgegeben: <span>${returned.length}</span></div>` : '') +
-    (allKeys.filter(k=>k.pfand&&Number(k.pfand)>0).length ?
-      `<div class="stat-chip">Mit Pfand: <span>${allKeys.filter(k=>k.pfand&&Number(k.pfand)>0).length}</span></div>` : '');
+    `<div class="stat-chip">Personen: <span>${persons.length}</span></div>` +
+    `<div class="stat-chip">Aktiv: <span>${activePersons.length}</span></div>` +
+    (pfandPersons.length ? `<div class="stat-chip">Mit Pfand: <span>${pfandPersons.length}</span></div>` : '');
 
   const list = document.getElementById('listKeys');
-  if (!filtered.length) {
+  if (!persons.length) {
     list.innerHTML = `<div class="empty-state"><div class="icon">🔑</div><p>Keine Einträge gefunden</p></div>`;
     return;
   }
 
-  list.innerHTML = [...active, ...returned].map(k => {
-    const ret = isReturned(k);
-    const dep = k.pfand && Number(k.pfand) > 0;
-    const cls = ret ? 'returned' : dep ? 'deposit' : '';
-    const ini = initials(k.nachname, k.vorname);
+  list.innerHTML = persons.map(([pkey, p]) => {
+    const activeKeys = p.keys.filter(k => !isReturned(k));
+    const hasDep = p.pfandTotal > 0;
+    const cls = activeKeys.length === 0 ? 'returned' : hasDep ? 'deposit' : '';
+    const ini = initials(p.nachname, p.vorname);
+    // Schlösser zusammenfassen
+    const locks = [...new Set(activeKeys.map(k => k.art).filter(Boolean))];
+    const lockText = locks.length > 2 ? locks.slice(0,2).join(', ') + ` +${locks.length-2}` : locks.join(', ');
     const badges = [];
-    if (k.nummer) badges.push(`<span class="badge num">Nr. ${k.nummer}</span>`);
-    if (k.datum)  badges.push(`<span class="badge date">${k.datum}</span>`);
-    if (dep)      badges.push(`<span class="badge pfand">Pfand ${k.pfand} €</span>`);
-    if (ret)      badges.push(`<span class="badge warn">abgegeben</span>`);
-    allKeyFields().filter(f => f.id.startsWith('custom_') && k[f.id])
-      .forEach(f => badges.push(`<span class="badge">${f.label}: ${k[f.id]}</span>`));
-    return `<div class="key-card ${cls}" onclick="showKeyDetail('${k.id}')">
+    if (activeKeys.length > 1) badges.push(`<span class="badge num">${activeKeys.length} Schlüssel</span>`);
+    if (hasDep) badges.push(`<span class="badge pfand">Pfand ${p.pfandTotal} €</span>`);
+    if (activeKeys.length === 0) badges.push(`<span class="badge warn">abgegeben</span>`);
+    return `<div class="key-card ${cls}" onclick="showPersonDetail('${encodeURIComponent(pkey)}')">
       <div class="card-inner">
         <div class="card-avatar">${ini}</div>
         <div class="card-content">
-          <div class="card-name">${esc(k.nachname)}${k.vorname?' '+esc(k.vorname):''}</div>
-          <div class="card-type">${esc(k.art||'–')}</div>
+          <div class="card-name">${esc(p.nachname)}${p.vorname?' '+esc(p.vorname):''}</div>
+          <div class="card-type">${esc(lockText||'–')}</div>
           ${badges.length?`<div class="card-meta">${badges.join('')}</div>`:''}
         </div>
         <span class="card-arrow">›</span>
@@ -668,7 +684,52 @@ function renderKeys() {
   }).join('');
 
   document.getElementById('headerSub').textContent =
-    `${active.length} aktiv${returned.length?' · '+returned.length+' abgegeben':''}`;
+    `${activePersons.length} aktiv`;
+}
+
+// ── DETAIL: PERSON ────────────────────────────────────────
+function showPersonDetail(encodedPkey) {
+  const pkey = decodeURIComponent(encodedPkey);
+  const sepIdx = pkey.indexOf('||');
+  const nachname = pkey.slice(0, sepIdx);
+  const vorname  = pkey.slice(sepIdx + 2);
+  const personKeys = allKeys.filter(k => (k.nachname||'') === nachname && (k.vorname||'') === vorname);
+
+  const activeKeys  = personKeys.filter(k => !isReturned(k));
+  const returnedKeys = personKeys.filter(k => isReturned(k));
+  const pfandTotal  = personKeys.reduce((s,k) => s+(Number(k.pfand)||0), 0);
+  const ini = initials(nachname, vorname);
+
+  const keyRow = k => `<div class="holder-item" onclick="showKeyDetail('${k.id}')">
+    <div class="holder-dot${isReturned(k)?' ret':''}"></div>
+    <div class="holder-name">${esc(k.art||'–')}</div>
+    <div class="holder-nr">${k.nummer ? 'Nr. '+k.nummer : k.datum||''}</div>
+  </div>`;
+
+  const heroClass = activeKeys.length === 0 ? 'grey' : pfandTotal > 0 ? 'orange' : 'blue';
+
+  document.getElementById('detailContent').innerHTML = `
+    <div class="detail-hero ${heroClass}">
+      <div class="detail-avatar">${ini}</div>
+      <div>
+        <div class="detail-name">${esc(nachname)} ${esc(vorname)}</div>
+        <div class="detail-type">${activeKeys.length} aktiver Schlüssel${activeKeys.length!==1?'':''}${pfandTotal>0?' · Pfand '+pfandTotal+' €':''}</div>
+      </div>
+    </div>
+    <div class="holder-list">
+      <div class="holder-list-title">Aktive Schlüssel (${activeKeys.length})</div>
+      <div class="holder-items">${activeKeys.length
+        ? activeKeys.map(keyRow).join('')
+        : '<div style="padding:10px 14px;color:var(--text-light);font-size:14px;">Keine aktiven Schlüssel</div>'}</div>
+    </div>
+    ${returnedKeys.length ? `<div class="holder-list">
+      <div class="holder-list-title">Abgegeben (${returnedKeys.length})</div>
+      <div class="holder-items">${returnedKeys.map(keyRow).join('')}</div>
+    </div>` : ''}
+    <div class="action-row">
+      <button class="btn-action btn-edit" onclick="openKeyForm(null,'${esc(nachname)}','${esc(vorname)}')">➕ Neuer Schlüssel</button>
+    </div>`;
+  openOverlay('detailOverlay');
 }
 
 // ── RENDER: LOCKS ─────────────────────────────────────────
@@ -819,7 +880,7 @@ function showKeyDetailByRef(id) {
 }
 
 // ── FORMS ─────────────────────────────────────────────────
-function openKeyForm(id = null) {
+function openKeyForm(id = null, prefillNachname = '', prefillVorname = '') {
   const k = id ? allKeys.find(x => x.id === id) : null;
   document.getElementById('formTitle').textContent = k ? 'Eintrag bearbeiten' : 'Neuer Eintrag';
   document.getElementById('fId').value = id || '';
@@ -832,9 +893,11 @@ function openKeyForm(id = null) {
   // Nachname + Vorname immer nebeneinander
   const nf = fields.find(f=>f.id==='nachname'), vf = fields.find(f=>f.id==='vorname');
   if (nf && vf) {
+    const nn = k?.nachname || prefillNachname;
+    const vn = k?.vorname  || prefillVorname;
     html += `<div class="form-row">
-      <div class="form-group"><label class="form-label">${esc(nf.label)}</label><input class="form-input" id="fi_nachname" placeholder="Mustermann" value="${esc(k?.nachname||'')}"></div>
-      <div class="form-group"><label class="form-label">${esc(vf.label)}</label><input class="form-input" id="fi_vorname" placeholder="Max" value="${esc(k?.vorname||'')}"></div>
+      <div class="form-group"><label class="form-label">${esc(nf.label)}</label><input class="form-input" id="fi_nachname" placeholder="Mustermann" value="${esc(nn)}"></div>
+      <div class="form-group"><label class="form-label">${esc(vf.label)}</label><input class="form-input" id="fi_vorname" placeholder="Max" value="${esc(vn)}"></div>
     </div>`;
   }
   const skip = new Set(['nachname','vorname']);
