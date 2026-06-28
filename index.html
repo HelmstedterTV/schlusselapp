@@ -175,11 +175,18 @@
   .btn-save:disabled { opacity: 0.55; }
 
   /* ── LOCK GROUP HEADER ── */
-  .lock-group-hdr { display: flex; align-items: center; gap: 8px; padding: 12px 4px 5px; margin-top: 4px; }
+  .lock-group-hdr { display: flex; align-items: center; gap: 8px; padding: 12px 4px 5px; margin-top: 4px; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .lock-group-hdr:first-child { padding-top: 4px; margin-top: 0; }
+  .lock-group-hdr:active { opacity: 0.7; }
+  .lock-group-toggle { font-size: 11px; color: var(--text-light); width: 14px; text-align: center; flex-shrink: 0; transition: transform 0.2s; }
   .lock-group-label { font-size: 12px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; flex: 1; }
   .lock-group-badge { font-size: 11px; color: var(--text-light); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px; }
-  .lock-group-items { margin-left: 8px; border-left: 2px solid var(--border); padding-left: 8px; margin-bottom: 4px; }
+  .lock-group-items { margin-left: 8px; border-left: 2px solid var(--border); padding-left: 8px; margin-bottom: 4px; overflow: hidden; transition: opacity 0.15s; }
+  .lock-group-items.collapsed { display: none; }
+  /* ── LOCK CARD ERWEITERT ── */
+  .lock-holders { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .lock-holder-chip { font-size: 12px; color: var(--blue-dark); background: rgba(0,98,204,0.07); border: 1px solid rgba(0,98,204,0.18); border-radius: 6px; padding: 2px 7px; }
+  .lock-remark { font-size: 12px; color: var(--text-light); margin-top: 4px; font-style: italic; }
 
   /* ── LOCK FORM INHABER ── */
   .lf-section-title { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.6px; padding: 14px 0 8px; border-top: 1px solid var(--border); margin-top: 4px; }
@@ -519,6 +526,7 @@ let filterKey = 'Alle', filterLock = 'Alle', searchText = '';
 let pendingDeleteId = null, pendingDeleteType = null;
 let pendingLockHolders = []; // [{nachname, vorname, existingIds[], targetCount}]
 let originalLockHolderIds = []; // key-IDs die beim Öffnen des Forms vorhanden waren
+let lockGroupStates = {}; // {gruppenName: false} = zugeklappt; undefined/true = offen
 let fieldConfig = {
   keyFields: JSON.parse(JSON.stringify(DEFAULT_KEY_FIELDS)),
   lockFields: JSON.parse(JSON.stringify(DEFAULT_LOCK_FIELDS)),
@@ -782,12 +790,18 @@ function renderLocks() {
     if (diff > 0) badges.push(`<span class="badge warn">${diff} fehlen</span>`);
     allLockFields().filter(f => f.id.startsWith('custom_') && l[f.id])
       .forEach(f => badges.push(`<span class="badge">${f.label}: ${l[f.id]}</span>`));
+    const holderChips = holders.map(k =>
+      `<span class="lock-holder-chip">${esc(k.nachname||'')}${k.vorname?' '+esc(k.vorname):''}</span>`
+    ).join('');
+    const remarkHtml = l.bemerkung ? `<div class="lock-remark">${esc(l.bemerkung)}</div>` : '';
     return `<div class="lock-card ${cls}" onclick="showLockDetail('${l.id}')">
       <div class="lock-inner">
         <div class="lock-num">${l.nr||'?'}</div>
         <div class="lock-content">
           <div class="lock-name">${esc(l.name||'–')}</div>
           ${badges.length?`<div class="lock-meta">${badges.join('')}</div>`:''}
+          ${holderChips?`<div class="lock-holders">${holderChips}</div>`:''}
+          ${remarkHtml}
         </div>
         <span class="card-arrow">›</span>
       </div>
@@ -811,16 +825,28 @@ function renderLocks() {
   [...grouped.entries()].sort(([a],[b]) => a.localeCompare(b, 'de')).forEach(([grp, locks]) => {
     const totalVergeben = locks.reduce((s,l) => s + allKeys.filter(k=>k.art===l.name&&!isReturned(k)).length, 0);
     const totalAnzahl   = locks.reduce((s,l) => s + (l.anzahl||0), 0);
-    html += `<div class="lock-group-hdr">
+    const grpId = 'lgi-' + encodeURIComponent(grp);
+    const open  = lockGroupStates[grp] !== false; // default offen
+    html += `<div class="lock-group-hdr" onclick="toggleLockGroup('${encodeURIComponent(grp)}')">
+      <span class="lock-group-toggle" id="lgt-${encodeURIComponent(grp)}">${open?'▼':'▶'}</span>
       <span class="lock-group-label">📦 ${esc(grp)}</span>
       <span class="lock-group-badge">${totalVergeben}/${totalAnzahl}</span>
     </div>
-    <div class="lock-group-items">${locks.map(lockCard).join('')}</div>`;
+    <div class="lock-group-items${open?'':' collapsed'}" id="${grpId}">${locks.map(lockCard).join('')}</div>`;
   });
   // Ungrouped danach
   html += ungrouped.map(l => lockCard(l)).join('');
 
   list.innerHTML = html;
+}
+
+function toggleLockGroup(encodedGrp) {
+  const grp = decodeURIComponent(encodedGrp);
+  lockGroupStates[grp] = lockGroupStates[grp] === false ? true : false;
+  const itemsEl  = document.getElementById('lgi-' + encodedGrp);
+  const toggleEl = document.getElementById('lgt-' + encodedGrp);
+  if (itemsEl) itemsEl.classList.toggle('collapsed', lockGroupStates[grp] === false);
+  if (toggleEl) toggleEl.textContent = lockGroupStates[grp] === false ? '▶' : '▼';
 }
 
 // ── DETAIL: KEY ───────────────────────────────────────────
